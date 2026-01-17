@@ -78,3 +78,6 @@ export {
 
 // Random number generation
 export { createRandom } from './random.js';
+
+// Observability (re-export as namespace for optional import)
+export * as observability from './observability/index.js';
