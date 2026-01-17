@@ -32,27 +32,27 @@ const ANSI = {
   clearLine: '\x1B[2K',
 } as const;
 
-// Console access
-declare const globalThis: {
-  console?: {
-    log: (...args: unknown[]) => void;
-  };
-  process?: {
-    stdout?: {
-      write: (s: string) => void;
-    };
-  };
-};
+// Console access - use type assertions to access Node.js globals
+type ProcessLike = { stdout?: { write: (s: string) => void } };
+type ConsoleLike = { log: (...args: unknown[]) => void };
+
+const getProcess = (): ProcessLike | undefined =>
+  typeof process !== 'undefined' ? (process as ProcessLike) : undefined;
+
+const getConsole = (): ConsoleLike | undefined =>
+  typeof console !== 'undefined' ? (console as ConsoleLike) : undefined;
 
 const write = (s: string) => {
-  if (globalThis.process?.stdout?.write) {
-    globalThis.process.stdout.write(s);
-  } else if (globalThis.console?.log) {
-    globalThis.console.log(s);
+  const proc = getProcess();
+  const cons = getConsole();
+  if (proc?.stdout?.write) {
+    proc.stdout.write(s);
+  } else if (cons?.log) {
+    cons.log(s);
   }
 };
 
-const log = globalThis.console?.log ?? (() => {});
+const log = getConsole()?.log ?? (() => {});
 
 /**
  * Sleep for specified milliseconds.

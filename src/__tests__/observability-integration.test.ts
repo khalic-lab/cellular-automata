@@ -309,9 +309,9 @@ describe('observability integration', () => {
       const jsonl = formatReportToJsonLines(result.report);
       const lines = jsonl.split('\n');
       expect(lines.length).toBeGreaterThan(2); // start, events, end
-      lines.forEach((line) => {
+      for (const line of lines) {
         expect(() => JSON.parse(line)).not.toThrow();
-      });
+      }
 
       // OpenTelemetry format
       const spans = formatReportToOTel(result.report);
@@ -401,9 +401,9 @@ describe('observability integration', () => {
       // Find step spans (should be children of evolution)
       const stepSpans = spans.filter((s) => s.name.startsWith('step_'));
       expect(stepSpans.length).toBe(10);
-      stepSpans.forEach((s) => {
+      for (const s of stepSpans) {
         expect(s.parentSpanId).toBe(evolutionSpan!.spanId);
-      });
+      }
     });
   });
 

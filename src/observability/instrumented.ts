@@ -40,11 +40,8 @@ import type {
   StepTiming,
 } from './types.js';
 
-// Use globalThis for cross-platform performance timing
-declare const globalThis: {
-  performance?: { now: () => number };
-};
-const perf = globalThis.performance ?? { now: () => Date.now() };
+// Use performance API for timing (cross-platform)
+const perf = typeof performance !== 'undefined' ? performance : { now: () => Date.now() };
 
 /**
  * Stepper state for manual evolution.
