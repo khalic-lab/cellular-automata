@@ -42,6 +42,101 @@ function isEnhancedMetrics(m: Metrics | EnhancedMetrics): m is EnhancedMetrics {
   return 'entropy' in m && 'stateHash' in m;
 }
 
+/** State for tracking extinction warnings */
+interface ExtinctionState {
+  warned: boolean;
+  maxPopulation: number;
+}
+
+/** Detect extinction event */
+function detectExtinction(m: Metrics, prev: Metrics, i: number): ObservabilityEvent | null {
+  if (m.population === 0 && prev.population !== 0) {
+    return {
+      type: 'extinction',
+      category: 'evolution',
+      timestamp: i,
+      step: m.step,
+      data: { previousPopulation: prev.population, stepsSinceStart: m.step },
+    };
+  }
+  return null;
+}
+
+/** Detect near-extinction warning */
+function detectNearExtinction(
+  m: Metrics,
+  i: number,
+  state: ExtinctionState
+): ObservabilityEvent | null {
+  if (m.population > 0 && m.population < state.maxPopulation * 0.05 && !state.warned) {
+    state.warned = true;
+    return {
+      type: 'near_extinction',
+      category: 'evolution',
+      timestamp: i,
+      step: m.step,
+      data: {
+        population: m.population,
+        maxPopulation: state.maxPopulation,
+        percentOfMax: ((m.population / state.maxPopulation) * 100).toFixed(1),
+      },
+    };
+  }
+  if (m.population >= state.maxPopulation * 0.1) {
+    state.warned = false;
+  }
+  return null;
+}
+
+/** Detect population spike */
+function detectPopulationSpike(
+  m: Metrics,
+  prevPopulation: number,
+  i: number
+): ObservabilityEvent | null {
+  if (prevPopulation <= 0) return null;
+  const changePercent = Math.abs(m.delta) / prevPopulation;
+  if (changePercent > 0.2) {
+    return {
+      type: m.delta > 0 ? 'population_spike_up' : 'population_spike_down',
+      category: 'evolution',
+      timestamp: i,
+      step: m.step,
+      data: {
+        previousPopulation: prevPopulation,
+        newPopulation: m.population,
+        delta: m.delta,
+        changePercent: (changePercent * 100).toFixed(1),
+      },
+    };
+  }
+  return null;
+}
+
+/** Detect entropy shift */
+function detectEntropyShift(
+  m: Metrics | EnhancedMetrics,
+  prev: Metrics | EnhancedMetrics,
+  i: number
+): ObservabilityEvent | null {
+  if (!isEnhancedMetrics(m) || !isEnhancedMetrics(prev)) return null;
+  const entropyChange = Math.abs(m.entropy - prev.entropy);
+  if (entropyChange > 0.1) {
+    return {
+      type: m.entropy > prev.entropy ? 'entropy_increase' : 'entropy_decrease',
+      category: 'evolution',
+      timestamp: i,
+      step: m.step,
+      data: {
+        previousEntropy: prev.entropy.toFixed(3),
+        newEntropy: m.entropy.toFixed(3),
+        change: entropyChange.toFixed(3),
+      },
+    };
+  }
+  return null;
+}
+
 /**
  * Generates observability events from metrics history.
  *
@@ -76,84 +171,29 @@ export function generateEventsFromMetrics(
     },
   });
 
-  // Track significant events during evolution
-  let prevExtinctionWarned = false;
+  // Track state across iterations
+  const extinctionState: ExtinctionState = {
+    warned: false,
+    maxPopulation: firstMetrics.population,
+  };
   let prevPopulation = firstMetrics.population;
 
   for (let i = 1; i < metricsHistory.length; i++) {
     const m = metricsHistory[i]!;
     const prev = metricsHistory[i - 1]!;
 
-    // Extinction event
-    if (m.population === 0 && prev.population !== 0) {
-      events.push({
-        type: 'extinction',
-        category: 'evolution',
-        timestamp: i,
-        step: m.step,
-        data: {
-          previousPopulation: prev.population,
-          stepsSinceStart: m.step,
-        },
-      });
-    }
+    // Update max population
+    extinctionState.maxPopulation = Math.max(extinctionState.maxPopulation, m.population);
 
-    // Near-extinction warning (< 5% of max population seen)
-    const maxPopulation = Math.max(...metricsHistory.slice(0, i + 1).map((x) => x.population));
-    if (m.population > 0 && m.population < maxPopulation * 0.05 && !prevExtinctionWarned) {
-      events.push({
-        type: 'near_extinction',
-        category: 'evolution',
-        timestamp: i,
-        step: m.step,
-        data: {
-          population: m.population,
-          maxPopulation,
-          percentOfMax: ((m.population / maxPopulation) * 100).toFixed(1),
-        },
-      });
-      prevExtinctionWarned = true;
-    } else if (m.population >= maxPopulation * 0.1) {
-      prevExtinctionWarned = false;
-    }
+    // Collect events from detectors
+    const detected = [
+      detectExtinction(m, prev, i),
+      detectNearExtinction(m, i, extinctionState),
+      detectPopulationSpike(m, prevPopulation, i),
+      detectEntropyShift(m, prev, i),
+    ].filter((e): e is ObservabilityEvent => e !== null);
 
-    // Population spike (> 20% change from previous)
-    if (prevPopulation > 0) {
-      const changePercent = Math.abs(m.delta) / prevPopulation;
-      if (changePercent > 0.2) {
-        events.push({
-          type: m.delta > 0 ? 'population_spike_up' : 'population_spike_down',
-          category: 'evolution',
-          timestamp: i,
-          step: m.step,
-          data: {
-            previousPopulation: prevPopulation,
-            newPopulation: m.population,
-            delta: m.delta,
-            changePercent: (changePercent * 100).toFixed(1),
-          },
-        });
-      }
-    }
-
-    // Entropy shift (for enhanced metrics)
-    if (isEnhancedMetrics(m) && isEnhancedMetrics(prev)) {
-      const entropyChange = Math.abs(m.entropy - prev.entropy);
-      if (entropyChange > 0.1) {
-        events.push({
-          type: m.entropy > prev.entropy ? 'entropy_increase' : 'entropy_decrease',
-          category: 'evolution',
-          timestamp: i,
-          step: m.step,
-          data: {
-            previousEntropy: prev.entropy.toFixed(3),
-            newEntropy: m.entropy.toFixed(3),
-            change: entropyChange.toFixed(3),
-          },
-        });
-      }
-    }
-
+    events.push(...detected);
     prevPopulation = m.population;
   }
 

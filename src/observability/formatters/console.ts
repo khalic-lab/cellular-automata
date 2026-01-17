@@ -12,6 +12,124 @@ declare const console: {
 
 import type { ObservabilityReport, VerbosityLevel } from '../types.js';
 
+/** Format the summary section */
+function formatSummarySection(report: ObservabilityReport): void {
+  console.log('\n[SUMMARY]');
+  console.log(`   Dimensions: ${report.summary.dimensions}`);
+  console.log(`   Total cells: ${report.summary.totalCells.toLocaleString()}`);
+  console.log(`   Steps: ${report.summary.stepsExecuted}`);
+  console.log(`   Outcome: ${report.summary.outcome} (${report.summary.wolframClass})`);
+  console.log(`   Initial population: ${report.summary.initialPopulation.toLocaleString()}`);
+  console.log(`   Final population: ${report.summary.finalPopulation.toLocaleString()}`);
+  const changeSign = report.summary.populationChange >= 0 ? '+' : '';
+  console.log(
+    `   Population change: ${changeSign}${report.summary.populationChange.toLocaleString()} (${changeSign}${report.summary.populationChangePercent.toFixed(1)}%)`
+  );
+}
+
+/** Format the timing section */
+function formatTimingSection(report: ObservabilityReport, verbosity: VerbosityLevel): void {
+  console.log('\n[TIMING]');
+  console.log(`   Total: ${report.timing.totalMs.toFixed(2)}ms`);
+  if (report.timing.initializationMs > 0) {
+    console.log(`   Initialization: ${report.timing.initializationMs.toFixed(2)}ms`);
+    console.log(`   Evolution: ${report.timing.evolutionMs.toFixed(2)}ms`);
+    console.log(`   Classification: ${report.timing.classificationMs.toFixed(2)}ms`);
+  }
+  console.log(`   Avg step: ${report.timing.averageStepMs.toFixed(3)}ms`);
+
+  // Step timing statistics (if available)
+  if (report.timing.stepTimings && report.timing.stepTimings.length > 0) {
+    const stepMs = report.timing.stepTimings.map((s) => s.durationMs);
+    const minStep = Math.min(...stepMs);
+    const maxStep = Math.max(...stepMs);
+    const medianStep = stepMs.sort((a, b) => a - b)[Math.floor(stepMs.length / 2)]!;
+
+    if (verbosity === 'debug' || verbosity === 'trace') {
+      console.log(`   Step timing range: ${minStep.toFixed(3)}ms - ${maxStep.toFixed(3)}ms`);
+      console.log(`   Median step: ${medianStep.toFixed(3)}ms`);
+    }
+  }
+}
+
+/** Format the classification section */
+function formatClassificationSection(report: ObservabilityReport, verbosity: VerbosityLevel): void {
+  console.log('\n[CLASSIFICATION]');
+  console.log(`   Confidence: ${(report.classification.confidence * 100).toFixed(0)}%`);
+  console.log('   Reasoning:');
+  for (const step of report.classification.reasoningPath) {
+    console.log(`     > ${step}`);
+  }
+
+  if (verbosity === 'debug' || verbosity === 'trace') {
+    console.log('   Metrics:');
+    console.log(`     Population trend: ${report.classification.metrics.populationTrend}`);
+    console.log(`     Entropy trend: ${report.classification.metrics.entropyTrend}`);
+    console.log(`     Cycle detected: ${report.classification.metrics.cycleDetected}`);
+    if (report.classification.metrics.cyclePeriod !== null) {
+      console.log(`     Cycle period: ${report.classification.metrics.cyclePeriod}`);
+    }
+  }
+}
+
+/** Format the events section */
+function formatEventsSection(report: ObservabilityReport, verbosity: VerbosityLevel): void {
+  if (report.events.length === 0 || verbosity === 'silent' || verbosity === 'error') {
+    return;
+  }
+
+  console.log('\n[NOTABLE EVENTS]');
+  const eventsToShow = verbosity === 'trace' ? report.events : report.events.slice(0, 10);
+  for (const event of eventsToShow) {
+    const stepStr = event.step !== null ? `[step ${event.step}]` : '[--]';
+    console.log(`   ${stepStr} ${event.type}`);
+
+    if (verbosity === 'trace') {
+      for (const [key, value] of Object.entries(event.data)) {
+        console.log(`       ${key}: ${value}`);
+      }
+    }
+  }
+  if (report.events.length > eventsToShow.length) {
+    console.log(`   ... and ${report.events.length - eventsToShow.length} more events`);
+  }
+}
+
+/** Format the metrics timeline section */
+function formatTimelineSection(report: ObservabilityReport, verbosity: VerbosityLevel): void {
+  if (verbosity !== 'trace' || report.metricsTimeline.length === 0) {
+    return;
+  }
+
+  console.log('\n[METRICS TIMELINE]');
+  console.log('   Step   | Population | Density | Delta | Entropy');
+  console.log(`   ${'-'.repeat(52)}`);
+
+  const timeline = report.metricsTimeline;
+  const showAll = timeline.length <= 15;
+  const indices = showAll
+    ? timeline.map((_, i) => i)
+    : [
+        ...timeline.slice(0, 5).map((_, i) => i),
+        Math.floor(timeline.length / 2),
+        ...timeline.slice(-5).map((_, i) => timeline.length - 5 + i),
+      ];
+
+  let lastIndex = -1;
+  for (const i of indices) {
+    if (!showAll && lastIndex !== -1 && i - lastIndex > 1) {
+      console.log('   ...    | ...        | ...     | ...   | ...');
+    }
+    const m = timeline[i]!;
+    const entropy = m.entropy !== undefined ? m.entropy.toFixed(3) : 'N/A';
+    const deltaStr = m.delta >= 0 ? `+${m.delta}` : `${m.delta}`;
+    console.log(
+      `   ${String(m.step).padStart(6)} | ${String(m.population).padStart(10)} | ${m.density.toFixed(3).padStart(7)} | ${deltaStr.padStart(5)} | ${entropy}`
+    );
+    lastIndex = i;
+  }
+}
+
 /**
  * Formats a report to human-readable console output.
  *
@@ -34,110 +152,11 @@ export function formatReportToConsole(
   console.log(`  EXPERIMENT REPORT: ${report.experimentId}`);
   console.log(line);
 
-  // Summary section
-  console.log('\n[SUMMARY]');
-  console.log(`   Dimensions: ${report.summary.dimensions}`);
-  console.log(`   Total cells: ${report.summary.totalCells.toLocaleString()}`);
-  console.log(`   Steps: ${report.summary.stepsExecuted}`);
-  console.log(`   Outcome: ${report.summary.outcome} (${report.summary.wolframClass})`);
-  console.log(`   Initial population: ${report.summary.initialPopulation.toLocaleString()}`);
-  console.log(`   Final population: ${report.summary.finalPopulation.toLocaleString()}`);
-  const changeSign = report.summary.populationChange >= 0 ? '+' : '';
-  console.log(
-    `   Population change: ${changeSign}${report.summary.populationChange.toLocaleString()} (${changeSign}${report.summary.populationChangePercent.toFixed(1)}%)`
-  );
-
-  // Timing section
-  console.log('\n[TIMING]');
-  console.log(`   Total: ${report.timing.totalMs.toFixed(2)}ms`);
-  if (report.timing.initializationMs > 0) {
-    console.log(`   Initialization: ${report.timing.initializationMs.toFixed(2)}ms`);
-    console.log(`   Evolution: ${report.timing.evolutionMs.toFixed(2)}ms`);
-    console.log(`   Classification: ${report.timing.classificationMs.toFixed(2)}ms`);
-  }
-  console.log(`   Avg step: ${report.timing.averageStepMs.toFixed(3)}ms`);
-
-  // Step timing statistics (if available)
-  if (report.timing.stepTimings && report.timing.stepTimings.length > 0) {
-    const stepMs = report.timing.stepTimings.map((s) => s.durationMs);
-    const minStep = Math.min(...stepMs);
-    const maxStep = Math.max(...stepMs);
-    const medianStep = stepMs.sort((a, b) => a - b)[Math.floor(stepMs.length / 2)]!;
-
-    if (verbosity === 'debug' || verbosity === 'trace') {
-      console.log(`   Step timing range: ${minStep.toFixed(3)}ms - ${maxStep.toFixed(3)}ms`);
-      console.log(`   Median step: ${medianStep.toFixed(3)}ms`);
-    }
-  }
-
-  // Classification reasoning section
-  console.log('\n[CLASSIFICATION]');
-  console.log(`   Confidence: ${(report.classification.confidence * 100).toFixed(0)}%`);
-  console.log('   Reasoning:');
-  for (const step of report.classification.reasoningPath) {
-    console.log(`     > ${step}`);
-  }
-
-  if (verbosity === 'debug' || verbosity === 'trace') {
-    console.log('   Metrics:');
-    console.log(`     Population trend: ${report.classification.metrics.populationTrend}`);
-    console.log(`     Entropy trend: ${report.classification.metrics.entropyTrend}`);
-    console.log(`     Cycle detected: ${report.classification.metrics.cycleDetected}`);
-    if (report.classification.metrics.cyclePeriod !== null) {
-      console.log(`     Cycle period: ${report.classification.metrics.cyclePeriod}`);
-    }
-  }
-
-  // Events section
-  if (report.events.length > 0 && verbosity !== 'silent' && verbosity !== 'error') {
-    console.log('\n[NOTABLE EVENTS]');
-    const eventsToShow = verbosity === 'trace' ? report.events : report.events.slice(0, 10);
-    for (const event of eventsToShow) {
-      const stepStr = event.step !== null ? `[step ${event.step}]` : '[--]';
-      console.log(`   ${stepStr} ${event.type}`);
-
-      if (verbosity === 'trace') {
-        for (const [key, value] of Object.entries(event.data)) {
-          console.log(`       ${key}: ${value}`);
-        }
-      }
-    }
-    if (report.events.length > eventsToShow.length) {
-      console.log(`   ... and ${report.events.length - eventsToShow.length} more events`);
-    }
-  }
-
-  // Metrics timeline (trace only)
-  if (verbosity === 'trace' && report.metricsTimeline.length > 0) {
-    console.log('\n[METRICS TIMELINE]');
-    console.log('   Step   | Population | Density | Delta | Entropy');
-    console.log(`   ${'-'.repeat(52)}`);
-
-    // Show first 5, last 5, and some in between
-    const timeline = report.metricsTimeline;
-    const showAll = timeline.length <= 15;
-    const indices = showAll
-      ? timeline.map((_, i) => i)
-      : [
-          ...timeline.slice(0, 5).map((_, i) => i),
-          Math.floor(timeline.length / 2),
-          ...timeline.slice(-5).map((_, i) => timeline.length - 5 + i),
-        ];
-
-    let lastIndex = -1;
-    for (const i of indices) {
-      if (!showAll && lastIndex !== -1 && i - lastIndex > 1) {
-        console.log('   ...    | ...        | ...     | ...   | ...');
-      }
-      const m = timeline[i]!;
-      const entropy = m.entropy !== undefined ? m.entropy.toFixed(3) : 'N/A';
-      const deltaStr = m.delta >= 0 ? `+${m.delta}` : `${m.delta}`;
-      console.log(
-        `   ${String(m.step).padStart(6)} | ${String(m.population).padStart(10)} | ${m.density.toFixed(3).padStart(7)} | ${deltaStr.padStart(5)} | ${entropy}`
-      );
-      lastIndex = i;
-    }
-  }
+  formatSummarySection(report);
+  formatTimingSection(report, verbosity);
+  formatClassificationSection(report, verbosity);
+  formatEventsSection(report, verbosity);
+  formatTimelineSection(report, verbosity);
 
   console.log(`\n${line}\n`);
 }

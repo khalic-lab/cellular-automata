@@ -54,25 +54,19 @@ const write = (s: string) => {
 
 const log = getConsole()?.log ?? (() => {});
 
-/**
- * Sleep for specified milliseconds.
- */
+/** Sleep for specified milliseconds. */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Stepper state for evolution.
- */
+/** Stepper state for evolution. */
 interface StepperState {
   currentGrid: Grid;
   nextGrid: Grid;
   stepCount: number;
 }
 
-/**
- * Creates initial stepper state.
- */
+/** Creates initial stepper state. */
 function createStepper(initialGrid: Grid): StepperState {
   return {
     currentGrid: initialGrid.clone(),
@@ -81,9 +75,7 @@ function createStepper(initialGrid: Grid): StepperState {
   };
 }
 
-/**
- * Counts alive neighbors for a cell.
- */
+/** Counts alive neighbors for a cell. */
 function countNeighbors(grid: Grid, coord: number[], neighborhood: number[][]): number {
   let count = 0;
   for (const offset of neighborhood) {
@@ -94,9 +86,7 @@ function countNeighbors(grid: Grid, coord: number[], neighborhood: number[][]): 
   return count;
 }
 
-/**
- * Advances grid by one generation.
- */
+/** Advances grid by one generation. */
 function stepGrid(state: StepperState, rule: Rule, neighborhood: number[][]): StepperState {
   const { currentGrid, nextGrid } = state;
   const coord = new Array(currentGrid.dimensions.length).fill(0);
@@ -124,9 +114,7 @@ function stepGrid(state: StepperState, rule: Rule, neighborhood: number[][]): St
   };
 }
 
-/**
- * Computes metrics for a grid.
- */
+/** Computes metrics for a grid. */
 function computeMetrics(grid: Grid, previousPopulation: number, step: number): EnhancedMetrics {
   const population = grid.countPopulation();
   const delta = population - previousPopulation;
@@ -143,9 +131,7 @@ function computeMetrics(grid: Grid, previousPopulation: number, step: number): E
   };
 }
 
-/**
- * Renders a single animation frame to terminal.
- */
+/** Renders a single animation frame to terminal. */
 function renderAnimationFrame(
   frame: VisualizationFrame,
   totalSteps: number,
@@ -155,7 +141,6 @@ function renderAnimationFrame(
 
   const lines: string[] = [];
 
-  // Progress header
   if (showProgress) {
     const progress = Math.round((frame.step / totalSteps) * 100);
     const progressBar = createProgressBar(progress, 30);
@@ -163,10 +148,8 @@ function renderAnimationFrame(
     lines.push('');
   }
 
-  // Grid
   lines.push(renderGridSlice(frame.grid, sliceOptions));
 
-  // Metrics
   if (showMetrics && frame.metrics) {
     lines.push('');
     lines.push(formatMetrics(frame.metrics));
@@ -175,14 +158,101 @@ function renderAnimationFrame(
   return lines.join('\n');
 }
 
-/**
- * Creates a simple ASCII progress bar.
- */
+/** Creates a simple ASCII progress bar. */
 function createProgressBar(percent: number, width: number): string {
   const filled = Math.round((percent / 100) * width);
   const empty = width - filled;
   return `[${'='.repeat(filled)}${' '.repeat(empty)}]`;
 }
+
+// ============================================================================
+// Animation control helpers
+// ============================================================================
+
+/** Pause state for animation control */
+interface PauseState {
+  stopped: boolean;
+  paused: boolean;
+  resolve: (() => void) | null;
+}
+
+/** Wait while paused, respecting stop signal */
+async function waitWhilePaused(state: PauseState): Promise<boolean> {
+  while (state.paused && !state.stopped) {
+    await new Promise<void>((resolve) => {
+      state.resolve = resolve;
+    });
+  }
+  return state.stopped;
+}
+
+/** Display a frame with optional screen clear */
+function displayFrame(
+  frame: VisualizationFrame,
+  totalSteps: number,
+  options: AnimationOptions,
+  doClear: boolean
+): void {
+  if (doClear) {
+    write(ANSI.clearScreen + ANSI.moveCursor(1, 1));
+  }
+  log(renderAnimationFrame(frame, totalSteps, options));
+}
+
+/** Determine animation outcome based on final state */
+function determineOutcome(finalPop: number, gridSize: number, stopped: boolean): string {
+  if (finalPop === 0) return 'extinct';
+  if (finalPop === gridSize) return 'full';
+  return stopped ? 'stopped' : 'active';
+}
+
+/** Log final animation summary */
+function logAnimationSummary(result: AnimationResult): void {
+  log('');
+  log('─'.repeat(40));
+  log(`Animation complete: ${result.outcome}`);
+  log(`Steps: ${result.totalSteps}, Population: ${result.finalPopulation}`);
+  log(`Duration: ${(result.durationMs / 1000).toFixed(1)}s`);
+}
+
+/** Log final playback summary */
+function logPlaybackSummary(framesCount: number, finalPop: number): void {
+  log('');
+  log('─'.repeat(40));
+  log('Playback complete');
+  log(`Frames: ${framesCount}, Final population: ${finalPop}`);
+}
+
+/** Create animation controller from pause state */
+function createController(
+  state: PauseState,
+  donePromise: Promise<AnimationResult>
+): AnimationController {
+  return {
+    stop: () => {
+      state.stopped = true;
+      if (state.resolve) {
+        state.resolve();
+        state.resolve = null;
+      }
+    },
+    pause: () => {
+      state.paused = true;
+    },
+    resume: () => {
+      state.paused = false;
+      if (state.resolve) {
+        state.resolve();
+        state.resolve = null;
+      }
+    },
+    done: donePromise,
+  };
+}
+
+// ============================================================================
+// Main animation functions
+// ============================================================================
 
 /**
  * Runs animated visualization of cellular automata evolution.
@@ -227,13 +297,11 @@ export function animate(
     ...renderOptions
   } = options;
 
-  let stopped = false;
-  let paused = false;
-  let pauseResolve: (() => void) | null = null;
-
+  const pauseState: PauseState = { stopped: false, paused: false, resolve: null };
   const startTime = Date.now();
+  const renderOpts = { charset, ...renderOptions };
 
-  // Initialize
+  // Initialize simulation
   const {
     dimensions,
     neighborhood: neighborhoodConfig,
@@ -242,7 +310,6 @@ export function animate(
     initialDensity,
     seed = 42,
   } = config;
-
   const grid = createGrid(dimensions);
   const rng = createRandom(seed);
   initializeRandom(grid, initialDensity, rng);
@@ -255,124 +322,52 @@ export function animate(
   let previousPop = state.currentGrid.countPopulation();
 
   const runAnimation = async (): Promise<AnimationResult> => {
-    // Hide cursor during animation
-    if (clearScreen) {
-      write(ANSI.hideCursor);
-    }
+    if (clearScreen) write(ANSI.hideCursor);
 
     try {
-      // Show initial state
-      const initialMetrics = computeMetrics(state.currentGrid, 0, 0);
+      // Show initial frame
       const initialFrame: VisualizationFrame = {
         step: 0,
         grid: state.currentGrid.clone(),
-        metrics: initialMetrics,
+        metrics: computeMetrics(state.currentGrid, 0, 0),
       };
-
-      if (clearScreen) {
-        write(ANSI.clearScreen + ANSI.moveCursor(1, 1));
-      }
-      log(renderAnimationFrame(initialFrame, steps, { charset, ...renderOptions }));
+      displayFrame(initialFrame, steps, renderOpts, clearScreen);
       onFrame?.(initialFrame, 0);
-
       await sleep(frameDelayMs);
 
-      // Evolve and display each step
-      for (let i = 0; i < steps && !stopped; i++) {
-        // Handle pause
-        while (paused && !stopped) {
-          await new Promise<void>((resolve) => {
-            pauseResolve = resolve;
-          });
-        }
-
-        if (stopped) break;
+      // Evolution loop
+      for (let i = 0; i < steps && !pauseState.stopped; i++) {
+        if (await waitWhilePaused(pauseState)) break;
 
         state = stepGrid(state, rule, neighborhood);
         const metrics = computeMetrics(state.currentGrid, previousPop, i + 1);
         previousPop = metrics.population;
 
-        const frame: VisualizationFrame = {
-          step: i + 1,
-          grid: state.currentGrid.clone(),
-          metrics,
-        };
-
-        if (clearScreen) {
-          write(ANSI.clearScreen + ANSI.moveCursor(1, 1));
-        }
-        log(renderAnimationFrame(frame, steps, { charset, ...renderOptions }));
+        const frame: VisualizationFrame = { step: i + 1, grid: state.currentGrid.clone(), metrics };
+        displayFrame(frame, steps, renderOpts, clearScreen);
         onFrame?.(frame, i + 1);
 
-        // Check for early termination (extinction)
-        if (metrics.population === 0) {
-          break;
-        }
-
-        if (i < steps - 1) {
-          await sleep(frameDelayMs);
-        }
+        if (metrics.population === 0) break;
+        if (i < steps - 1) await sleep(frameDelayMs);
       }
 
-      // Determine outcome
       const finalPop = state.currentGrid.countPopulation();
-      let outcome: string;
-      if (finalPop === 0) {
-        outcome = 'extinct';
-      } else if (finalPop === grid.size) {
-        outcome = 'full';
-      } else {
-        outcome = stopped ? 'stopped' : 'active';
-      }
-
       const result: AnimationResult = {
         totalSteps: state.stepCount,
-        outcome,
+        outcome: determineOutcome(finalPop, grid.size, pauseState.stopped),
         finalPopulation: finalPop,
         durationMs: Date.now() - startTime,
       };
 
-      // Show final summary
-      if (!stopped) {
-        log('');
-        log('─'.repeat(40));
-        log(`Animation complete: ${result.outcome}`);
-        log(`Steps: ${result.totalSteps}, Population: ${result.finalPopulation}`);
-        log(`Duration: ${(result.durationMs / 1000).toFixed(1)}s`);
-      }
-
+      if (!pauseState.stopped) logAnimationSummary(result);
       onComplete?.(result);
       return result;
     } finally {
-      // Show cursor again
-      if (clearScreen) {
-        write(ANSI.showCursor);
-      }
+      if (clearScreen) write(ANSI.showCursor);
     }
   };
 
-  const donePromise = runAnimation();
-
-  return {
-    stop: () => {
-      stopped = true;
-      if (pauseResolve) {
-        pauseResolve();
-        pauseResolve = null;
-      }
-    },
-    pause: () => {
-      paused = true;
-    },
-    resume: () => {
-      paused = false;
-      if (pauseResolve) {
-        pauseResolve();
-        pauseResolve = null;
-      }
-    },
-    done: donePromise,
-  };
+  return createController(pauseState, runAnimation());
 }
 
 /**
@@ -452,11 +447,7 @@ export function collectFrames(config: ExperimentConfig, frameInterval = 1): Visu
     previousPop = metrics.population;
 
     if ((i + 1) % frameInterval === 0 || i === steps - 1) {
-      frames.push({
-        step: i + 1,
-        grid: state.currentGrid.clone(),
-        metrics,
-      });
+      frames.push({ step: i + 1, grid: state.currentGrid.clone(), metrics });
     }
 
     if (metrics.population === 0) break;
@@ -485,85 +476,41 @@ export function playFrames(
     ...renderOptions
   } = options;
 
-  let stopped = false;
-  let paused = false;
-  let pauseResolve: (() => void) | null = null;
-
+  const pauseState: PauseState = { stopped: false, paused: false, resolve: null };
   const startTime = Date.now();
   const totalSteps = frames.length > 0 ? frames[frames.length - 1]!.step : 0;
+  const renderOpts = { charset, ...renderOptions };
 
   const runPlayback = async (): Promise<AnimationResult> => {
-    if (clearScreen) {
-      write(ANSI.hideCursor);
-    }
+    if (clearScreen) write(ANSI.hideCursor);
 
     try {
-      for (let i = 0; i < frames.length && !stopped; i++) {
-        while (paused && !stopped) {
-          await new Promise<void>((resolve) => {
-            pauseResolve = resolve;
-          });
-        }
-
-        if (stopped) break;
+      for (let i = 0; i < frames.length && !pauseState.stopped; i++) {
+        if (await waitWhilePaused(pauseState)) break;
 
         const frame = frames[i]!;
-
-        if (clearScreen) {
-          write(ANSI.clearScreen + ANSI.moveCursor(1, 1));
-        }
-        log(renderAnimationFrame(frame, totalSteps, { charset, ...renderOptions }));
+        displayFrame(frame, totalSteps, renderOpts, clearScreen);
         onFrame?.(frame, i);
 
-        if (i < frames.length - 1) {
-          await sleep(frameDelayMs);
-        }
+        if (i < frames.length - 1) await sleep(frameDelayMs);
       }
 
       const lastFrame = frames[frames.length - 1];
+      const finalPop = lastFrame?.metrics?.population ?? 0;
       const result: AnimationResult = {
         totalSteps,
-        outcome: stopped ? 'stopped' : 'complete',
-        finalPopulation: lastFrame?.metrics?.population ?? 0,
+        outcome: pauseState.stopped ? 'stopped' : 'complete',
+        finalPopulation: finalPop,
         durationMs: Date.now() - startTime,
       };
 
-      if (!stopped) {
-        log('');
-        log('─'.repeat(40));
-        log('Playback complete');
-        log(`Frames: ${frames.length}, Final population: ${result.finalPopulation}`);
-      }
-
+      if (!pauseState.stopped) logPlaybackSummary(frames.length, finalPop);
       onComplete?.(result);
       return result;
     } finally {
-      if (clearScreen) {
-        write(ANSI.showCursor);
-      }
+      if (clearScreen) write(ANSI.showCursor);
     }
   };
 
-  const donePromise = runPlayback();
-
-  return {
-    stop: () => {
-      stopped = true;
-      if (pauseResolve) {
-        pauseResolve();
-        pauseResolve = null;
-      }
-    },
-    pause: () => {
-      paused = true;
-    },
-    resume: () => {
-      paused = false;
-      if (pauseResolve) {
-        pauseResolve();
-        pauseResolve = null;
-      }
-    },
-    done: donePromise,
-  };
+  return createController(pauseState, runPlayback());
 }
