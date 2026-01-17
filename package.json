@@ -1,0 +1,29 @@
+{
+  "name": "nd-cellular-automata",
+  "version": "1.0.0",
+  "description": "Zero-dependency TypeScript library for N-dimensional cellular automata with LLM-friendly JSON interface",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "bun run tsc",
+    "dev": "bun run --watch src/index.ts"
+  },
+  "keywords": [
+    "cellular-automata",
+    "n-dimensional",
+    "typescript",
+    "simulation",
+    "game-of-life",
+    "zero-dependency"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
