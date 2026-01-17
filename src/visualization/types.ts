@@ -150,3 +150,49 @@ export interface VisualizationResult {
   /** Final population */
   readonly finalPopulation: number;
 }
+
+/**
+ * Options for animated visualization.
+ */
+export interface AnimationOptions extends SliceRenderOptions {
+  /** Milliseconds between frames (default: 1500) */
+  readonly frameDelayMs?: number;
+  /** Show metrics below the grid */
+  readonly showMetrics?: boolean;
+  /** Show step counter and progress */
+  readonly showProgress?: boolean;
+  /** Clear screen between frames (default: true) */
+  readonly clearScreen?: boolean;
+  /** Callback when animation completes */
+  readonly onComplete?: (result: AnimationResult) => void;
+  /** Callback for each frame */
+  readonly onFrame?: (frame: VisualizationFrame, frameIndex: number) => void;
+}
+
+/**
+ * Result from animated visualization.
+ */
+export interface AnimationResult {
+  /** Total steps executed */
+  readonly totalSteps: number;
+  /** Final outcome classification */
+  readonly outcome: string;
+  /** Final population count */
+  readonly finalPopulation: number;
+  /** Total animation duration in ms */
+  readonly durationMs: number;
+}
+
+/**
+ * Control handle for running animation.
+ */
+export interface AnimationController {
+  /** Stop the animation early */
+  stop: () => void;
+  /** Pause the animation */
+  pause: () => void;
+  /** Resume paused animation */
+  resume: () => void;
+  /** Promise that resolves when animation completes */
+  readonly done: Promise<AnimationResult>;
+}

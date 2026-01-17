@@ -2,13 +2,13 @@
  * Terminal visualization module for N-dimensional cellular automata.
  *
  * Provides text-based visualization using Unicode/ASCII characters.
- * Supports snapshot mode showing start, end, and configurable intervals.
+ * Supports both snapshot mode and real-time animation.
  *
  * @example
  * ```typescript
- * import { visualize, CHARSETS, BORDERS } from 'nd-cellular-automata/visualization';
+ * import { visualize, animate, CHARSETS } from 'nd-cellular-automata/visualization';
  *
- * // Quick visualization with snapshots every 25 steps
+ * // Snapshot visualization
  * visualize({
  *   dimensions: [20, 20],
  *   neighborhood: { type: 'moore', range: 1 },
@@ -18,12 +18,18 @@
  *   seed: 42,
  * }, 25);
  *
- * // Custom rendering options
- * visualize(config, 50, {
- *   charset: CHARSETS.ascii,
- *   border: BORDERS.double,
- *   layout: 'stacked',
+ * // Real-time animation (1.5s per frame by default)
+ * const controller = animate({
+ *   dimensions: [20, 20],
+ *   neighborhood: { type: 'moore', range: 1 },
+ *   rule: { birth: [3], survival: [2, 3] },
+ *   steps: 50,
+ *   initialDensity: 0.3,
+ *   seed: 42,
  * });
+ *
+ * // Wait for completion
+ * const result = await controller.done;
  * ```
  */
 
@@ -36,6 +42,9 @@ export type {
   VisualizationFrame,
   SnapshotVisualizationOptions,
   VisualizationResult,
+  AnimationOptions,
+  AnimationResult,
+  AnimationController,
 } from './types.js';
 
 // Constants
@@ -52,9 +61,17 @@ export {
   renderFramesStacked,
 } from './terminal.js';
 
-// High-level functions
+// High-level snapshot functions
 export {
   runWithSnapshots,
   printSnapshots,
   visualize,
 } from './terminal.js';
+
+// Animation functions
+export {
+  animate,
+  animateAsync,
+  collectFrames,
+  playFrames,
+} from './animate.js';

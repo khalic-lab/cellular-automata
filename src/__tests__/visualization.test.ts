@@ -3,6 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+
+declare function setTimeout(callback: () => void, ms: number): number;
 import {
   render2DArray,
   renderGrid2D,
@@ -12,6 +14,8 @@ import {
   renderFramesSideBySide,
   renderFramesStacked,
   runWithSnapshots,
+  collectFrames,
+  animate,
   CHARSETS,
   BORDERS,
 } from '../visualization/index.js';
@@ -463,5 +467,147 @@ describe('3D visualization', () => {
 
     expect(result.frames.length).toBeGreaterThanOrEqual(2);
     expect(result.frames[0]!.grid.dimensions).toEqual([5, 5, 5]);
+  });
+});
+
+describe('animation', () => {
+  const config = {
+    dimensions: [5, 5],
+    neighborhood: { type: 'moore' as const, range: 1 },
+    rule: { birth: [3], survival: [2, 3] },
+    steps: 10,
+    initialDensity: 0.3,
+    seed: 42,
+  };
+
+  describe('collectFrames', () => {
+    it('collects all frames when interval is 1', () => {
+      const frames = collectFrames(config, 1);
+
+      // Should have initial + all steps
+      expect(frames.length).toBe(11); // 0 through 10
+      expect(frames[0]!.step).toBe(0);
+      expect(frames[10]!.step).toBe(10);
+    });
+
+    it('collects frames at specified interval', () => {
+      const frames = collectFrames(config, 5);
+
+      // Should have: step 0, 5, 10
+      expect(frames.length).toBe(3);
+      expect(frames.map(f => f.step)).toEqual([0, 5, 10]);
+    });
+
+    it('includes metrics in frames', () => {
+      const frames = collectFrames(config, 1);
+
+      for (const frame of frames) {
+        expect(frame.metrics).toBeDefined();
+        expect(frame.metrics!.population).toBeGreaterThanOrEqual(0);
+        expect(frame.metrics!.step).toBe(frame.step);
+      }
+    });
+
+    it('stops early on extinction', () => {
+      const extinctConfig = {
+        ...config,
+        rule: { birth: [8], survival: [] }, // Will die out quickly
+        initialDensity: 0.1,
+      };
+
+      const frames = collectFrames(extinctConfig, 1);
+
+      // Should stop before reaching all steps
+      const lastFrame = frames[frames.length - 1]!;
+      expect(lastFrame.metrics!.population).toBe(0);
+    });
+
+    it('is deterministic with same seed', () => {
+      const frames1 = collectFrames(config, 1);
+      const frames2 = collectFrames(config, 1);
+
+      expect(frames1.length).toBe(frames2.length);
+      for (let i = 0; i < frames1.length; i++) {
+        expect(frames1[i]!.metrics!.population).toBe(
+          frames2[i]!.metrics!.population
+        );
+      }
+    });
+  });
+
+  describe('animate', () => {
+    it('returns controller with stop/pause/resume', () => {
+      const controller = animate(config, {
+        frameDelayMs: 10,
+        clearScreen: false,
+      });
+
+      expect(typeof controller.stop).toBe('function');
+      expect(typeof controller.pause).toBe('function');
+      expect(typeof controller.resume).toBe('function');
+      expect(controller.done).toBeInstanceOf(Promise);
+
+      // Stop immediately to clean up
+      controller.stop();
+    });
+
+    it('can be stopped early', async () => {
+      const controller = animate(config, {
+        frameDelayMs: 100,
+        clearScreen: false,
+      });
+
+      // Stop after a short delay
+      setTimeout(() => controller.stop(), 50);
+
+      const result = await controller.done;
+      expect(result.outcome).toBe('stopped');
+      expect(result.totalSteps).toBeLessThan(config.steps);
+    });
+
+    it('completes and returns result', async () => {
+      const result = await animate({
+        ...config,
+        steps: 3,
+      }, {
+        frameDelayMs: 10,
+        clearScreen: false,
+      }).done;
+
+      expect(result.totalSteps).toBe(3);
+      expect(['active', 'extinct']).toContain(result.outcome);
+      expect(result.finalPopulation).toBeGreaterThanOrEqual(0);
+      expect(result.durationMs).toBeGreaterThan(0);
+    });
+
+    it('calls onFrame callback', async () => {
+      const frames: number[] = [];
+
+      await animate({
+        ...config,
+        steps: 3,
+      }, {
+        frameDelayMs: 10,
+        clearScreen: false,
+        onFrame: (frame) => frames.push(frame.step),
+      }).done;
+
+      expect(frames).toEqual([0, 1, 2, 3]);
+    });
+
+    it('calls onComplete callback', async () => {
+      let completeCalled = false;
+
+      await animate({
+        ...config,
+        steps: 2,
+      }, {
+        frameDelayMs: 10,
+        clearScreen: false,
+        onComplete: () => { completeCalled = true; },
+      }).done;
+
+      expect(completeCalled).toBe(true);
+    });
   });
 });
