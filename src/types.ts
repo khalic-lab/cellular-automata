@@ -73,10 +73,64 @@ export type Metrics = {
 };
 
 /**
+ * Enhanced metrics with additional measures for multi-metric classification.
+ *
+ * Extends basic Metrics with:
+ * - Spatial entropy: measures disorder/randomness of cell distribution
+ * - State hash: unique identifier for cycle detection
+ *
+ * Reference: Entropy-based classification (MDPI Entropy 2021)
+ * Reference: Hamming distance classification (arXiv 2407.06175)
+ */
+export type EnhancedMetrics = Metrics & {
+  readonly entropy: number;     // Spatial entropy [0, 1], higher = more disorder
+  readonly stateHash: number;   // FNV-1a hash for exact state comparison
+};
+
+/**
  * Classification of experiment outcome.
  * Determined by analyzing metrics history.
  */
 export type Outcome = 'extinct' | 'explosive' | 'stable' | 'oscillating';
+
+/**
+ * Extended classification aligned with Wolfram's four classes.
+ *
+ * Reference: Wolfram, S. (1984). "Universality and Complexity in Cellular Automata"
+ * Reference: Wolfram, S. (2002). "A New Kind of Science"
+ *
+ * - class1: Evolves to homogeneous state (all cells same)
+ * - class2_stable: Fixed point (stable structure)
+ * - class2_periodic: Periodic oscillation (detected via state hash)
+ * - class3: Chaotic/pseudo-random (high entropy variance)
+ * - class4: Complex structures (edge of chaos) - hardest to detect
+ * - extinct: Population died out (special case of class1)
+ */
+export type WolframClass =
+  | 'class1'
+  | 'class2_stable'
+  | 'class2_periodic'
+  | 'class3'
+  | 'class4'
+  | 'extinct';
+
+/**
+ * Function that classifies using enhanced metrics.
+ * Returns both simple Outcome and Wolfram class.
+ */
+export type EnhancedOutcomeClassifier = (
+  metricsHistory: EnhancedMetrics[]
+) => {
+  outcome: Outcome;
+  wolframClass: WolframClass;
+  confidence: number;  // 0-1 confidence in classification
+  details: {
+    cycleDetected: boolean;
+    cyclePeriod: number | null;
+    entropyTrend: 'increasing' | 'decreasing' | 'stable' | 'fluctuating';
+    populationTrend: 'growing' | 'shrinking' | 'stable' | 'oscillating';
+  };
+};
 
 /**
  * Function that classifies experiment outcomes.

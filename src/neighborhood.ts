@@ -4,9 +4,24 @@
  * Generates offset vectors defining which cells are neighbors.
  * Computed once at initialization and reused for all cells.
  *
- * Supports:
+ * Neighborhood Types:
  * - Moore: All cells within Chebyshev distance (includes diagonals)
  * - von Neumann: Cells within Manhattan distance (excludes diagonals)
+ *
+ * Academic References:
+ *
+ * [1] Von Neumann, J. (1966). "Theory of Self-Reproducing Automata"
+ *     Edited by A.W. Burks. University of Illinois Press.
+ *     - Defines orthogonal (4-connected in 2D) neighborhood
+ *     - Also known as "von Neumann neighborhood"
+ *
+ * [2] Moore, E.F. (1962). "Machine Models of Self-Reproduction"
+ *     Proceedings of Symposia in Applied Mathematics, 14, 17-33.
+ *     - Defines 8-connected (including diagonals) neighborhood
+ *     - Also known as "Moore neighborhood"
+ *
+ * [3] Gardner, M. (1970). Scientific American 223(4), 120-123.
+ *     - Conway's Game of Life uses Moore neighborhood
  */
 
 import type { NeighborhoodType } from './types.js';

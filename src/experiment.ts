@@ -6,6 +6,25 @@
  * 2. Evolve for specified steps
  * 3. Collect metrics
  * 4. Classify outcome
+ *
+ * Classification approaches are based on academic research:
+ *
+ * References:
+ * - Wolfram, S. (1984). "Universality and Complexity in Cellular Automata"
+ *   Physica D: Nonlinear Phenomena, 10(1-2), 1-35.
+ *   DOI: 10.1016/0167-2789(84)90245-8
+ *
+ * - Wolfram, S. (2002). "A New Kind of Science"
+ *   Wolfram Media, Inc. ISBN: 1-57955-008-8
+ *   https://www.wolframscience.com/nks/
+ *
+ * - Baetens, J.M. & De Baets, B. (2021). "Entropy-Based Classification of
+ *   Elementary Cellular Automata under Asynchronous Updating"
+ *   Entropy, 23(2), 209. DOI: 10.3390/e23020209
+ *
+ * - Ruivo, E.L.P. et al. (2024). "Classification of Cellular Automata
+ *   based on the Hamming distance"
+ *   arXiv:2407.06175. DOI: 10.48550/arXiv.2407.06175
  */
 
 import type {
@@ -13,13 +32,16 @@ import type {
   ExperimentResult,
   OutcomeClassifier,
   Outcome,
-  Metrics
+  Metrics,
+  EnhancedMetrics,
+  WolframClass,
 } from './types.js';
 import { createGrid, initializeRandom } from './grid.js';
 import { generateNeighborhood, getMaxNeighbors } from './neighborhood.js';
 import { ruleFromThresholds } from './rule.js';
-import { evolve } from './stepper.js';
+import { evolve, evolveEnhanced } from './stepper.js';
 import { createRandom } from './random.js';
+import { multiMetricClassifier, type ClassificationResult } from './classifier.js';
 
 /**
  * Default outcome classifier using hash-based cycle detection.
@@ -178,5 +200,119 @@ export function runExperiment(
     finalPopulation: finalGrid.countPopulation(),
     metricsHistory,
     config
+  };
+}
+
+/**
+ * Enhanced experiment result with multi-metric classification.
+ *
+ * Extends ExperimentResult with:
+ * - Wolfram class (Class 1-4 alignment)
+ * - Classification confidence score
+ * - Detailed analysis (cycle detection, entropy/population trends)
+ * - Enhanced metrics with entropy and state hash
+ */
+export interface EnhancedExperimentResult {
+  /** Simple outcome classification */
+  outcome: Outcome;
+
+  /** Wolfram's four-class classification */
+  wolframClass: WolframClass;
+
+  /** Confidence in classification (0-1) */
+  confidence: number;
+
+  /** Final population count */
+  finalPopulation: number;
+
+  /** Enhanced metrics history including entropy and state hash */
+  metricsHistory: EnhancedMetrics[];
+
+  /** Configuration used for this experiment */
+  config: ExperimentConfig;
+
+  /** Detailed classification analysis */
+  details: ClassificationResult['details'];
+}
+
+/**
+ * Runs experiment with multi-metric classification.
+ *
+ * Uses enhanced metrics (entropy, state hash) for more accurate
+ * classification aligned with Wolfram's four classes.
+ *
+ * Based on academic research:
+ * - Entropy-based classification (Baetens & De Baets, 2021)
+ *   DOI: 10.3390/e23020209
+ * - Hamming distance classification (Ruivo et al., 2024)
+ *   DOI: 10.48550/arXiv.2407.06175
+ *
+ * @param config - Experiment configuration
+ * @returns Enhanced experiment results with Wolfram classification
+ *
+ * @example
+ * ```typescript
+ * const result = runExperimentEnhanced({
+ *   dimensions: [20, 20, 20],
+ *   neighborhood: { type: 'moore', range: 1 },
+ *   rule: { birth: [4], survival: [4, 5] },
+ *   steps: 100,
+ *   initialDensity: 0.15,
+ *   seed: 42
+ * });
+ *
+ * console.log(result.outcome);       // 'stable'
+ * console.log(result.wolframClass);  // 'class2_stable'
+ * console.log(result.confidence);    // 0.95
+ * console.log(result.details.cycleDetected);  // true
+ * ```
+ */
+export function runExperimentEnhanced(
+  config: ExperimentConfig
+): EnhancedExperimentResult {
+  const {
+    dimensions,
+    neighborhood: neighborhoodConfig,
+    rule: ruleConfig,
+    steps,
+    initialDensity,
+    seed = 42,
+    metricsInterval = 1,
+  } = config;
+
+  // 1. Create and initialize grid
+  const grid = createGrid(dimensions);
+  const rng = createRandom(seed);
+  initializeRandom(grid, initialDensity, rng);
+
+  // 2. Generate neighborhood
+  const { type, range = 1 } = neighborhoodConfig;
+  const neighborhood = generateNeighborhood(dimensions, { type, range });
+  const maxNeighbors = getMaxNeighbors(dimensions, type, range);
+
+  // 3. Create rule from thresholds
+  const rule = ruleFromThresholds(ruleConfig.birth, ruleConfig.survival, maxNeighbors);
+
+  // 4. Evolve with enhanced metrics collection
+  const { finalGrid, metricsHistory } = evolveEnhanced(
+    grid,
+    rule,
+    neighborhood,
+    steps,
+    metricsInterval
+  );
+
+  // 5. Classify using multi-metric classifier
+  const classification = multiMetricClassifier(metricsHistory);
+
+  // 6. Return enhanced results
+  return {
+    outcome: classification.outcome,
+    wolframClass: classification.wolframClass,
+    confidence: classification.confidence,
+    finalPopulation: finalGrid.countPopulation(),
+    metricsHistory,
+    config,
+    details: classification.details,
   };
 }

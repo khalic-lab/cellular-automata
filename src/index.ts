@@ -30,14 +30,24 @@ export type {
   Rule,
   SeededRandom,
   Metrics,
+  EnhancedMetrics,
   Outcome,
+  WolframClass,
   OutcomeClassifier,
+  EnhancedOutcomeClassifier,
   ExperimentConfig,
-  ExperimentResult
+  ExperimentResult,
 } from './types.js';
 
 // Grid operations
-export { Grid, createGrid, initializeRandom } from './grid.js';
+export {
+  Grid,
+  createGrid,
+  initializeRandom,
+  computeSpatialEntropy,
+  computeStateHash,
+  computeHammingDistance,
+} from './grid.js';
 
 // Neighborhood generation
 export { generateNeighborhood, getMaxNeighbors } from './neighborhood.js';
@@ -46,13 +56,25 @@ export { generateNeighborhood, getMaxNeighbors } from './neighborhood.js';
 export { createRule, ruleFromThresholds, shouldCellBeAlive } from './rule.js';
 
 // Evolution engine
-export { evolve } from './stepper.js';
+export { evolve, evolveEnhanced } from './stepper.js';
 
 // Visualization support
 export { extractSlice, extractSlices } from './slicer.js';
 
 // Experiment orchestration
-export { runExperiment, hashBasedClassifier } from './experiment.js';
+export {
+  runExperiment,
+  runExperimentEnhanced,
+  hashBasedClassifier,
+  type EnhancedExperimentResult,
+} from './experiment.js';
+
+// Multi-metric classifier
+export {
+  multiMetricClassifier,
+  createSimpleClassifier,
+  type ClassificationResult,
+} from './classifier.js';
 
 // Random number generation
 export { createRandom } from './random.js';

@@ -7,8 +7,8 @@
  * - Configurable metrics collection
  */
 
-import type { Rule, Metrics } from './types.js';
-import { Grid } from './grid.js';
+import type { Rule, Metrics, EnhancedMetrics } from './types.js';
+import { Grid, computeSpatialEntropy, computeStateHash } from './grid.js';
 import { shouldCellBeAlive } from './rule.js';
 
 /**
@@ -29,7 +29,7 @@ type StepperState = {
  */
 function createStepper(initialGrid: Grid): StepperState {
   return {
-    currentGrid: initialGrid,
+    currentGrid: initialGrid.clone(),
     nextGrid: initialGrid.clone(),
     stepCount: 0
   };
@@ -196,5 +196,132 @@ export function evolve(
   return {
     finalGrid: state.currentGrid,
     metricsHistory
+  };
+}
+
+/**
+ * Computes enhanced metrics including entropy and state hash.
+ *
+ * @param grid - Current grid
+ * @param previousPopulation - Population from previous step
+ * @param stepNumber - Current step number
+ * @returns EnhancedMetrics object
+ */
+function computeEnhancedMetrics(
+  grid: Grid,
+  previousPopulation: number,
+  stepNumber: number
+): EnhancedMetrics {
+  const population = grid.countPopulation();
+  const delta = population - previousPopulation;
+  const births = Math.max(0, delta);
+  const deaths = Math.max(0, -delta);
+
+  return {
+    population,
+    density: population / grid.size,
+    births,
+    deaths,
+    delta,
+    step: stepNumber,
+    entropy: computeSpatialEntropy(grid),
+    stateHash: computeStateHash(grid),
+  };
+}
+
+/**
+ * Advances grid by one generation with enhanced metrics.
+ *
+ * @param state - Current stepper state
+ * @param rule - Rule to apply
+ * @param neighborhood - Precomputed neighborhood offsets
+ * @returns Updated state and enhanced metrics
+ */
+function stepEnhanced(
+  { currentGrid, nextGrid, stepCount }: StepperState,
+  rule: Rule,
+  neighborhood: number[][]
+): { state: StepperState; metrics: EnhancedMetrics } {
+  const previousPopulation = currentGrid.countPopulation();
+  const coord = new Array(currentGrid.dimensions.length).fill(0);
+
+  function iterateGrid(dim: number): void {
+    if (dim === coord.length) {
+      const currentState = currentGrid.get(coord);
+      const neighborCount = countNeighbors(currentGrid, coord, neighborhood);
+      const nextState = shouldCellBeAlive(rule, currentState, neighborCount);
+      nextGrid.set(coord, nextState ? 1 : 0);
+      return;
+    }
+
+    for (let i = 0; i < currentGrid.dimensions[dim]!; i++) {
+      coord[dim] = i;
+      iterateGrid(dim + 1);
+    }
+  }
+
+  iterateGrid(0);
+
+  const metrics = computeEnhancedMetrics(nextGrid, previousPopulation, stepCount + 1);
+
+  const newState: StepperState = {
+    currentGrid: nextGrid,
+    nextGrid: currentGrid,
+    stepCount: stepCount + 1,
+  };
+
+  return { state: newState, metrics };
+}
+
+/**
+ * Evolves grid with enhanced metrics collection.
+ *
+ * Collects additional metrics for multi-metric classification:
+ * - Spatial entropy
+ * - State hash for cycle detection
+ *
+ * Reference: Academic-based classification approach
+ * (MDPI Entropy 2021, arXiv 2407.06175)
+ *
+ * @param initialGrid - Starting configuration
+ * @param rule - Evolution rule
+ * @param neighborhood - Precomputed neighborhood offsets
+ * @param steps - Number of generations to simulate
+ * @param metricsInterval - Collect metrics every N steps (default: 1)
+ * @returns Final grid and enhanced metrics history
+ *
+ * @example
+ * ```typescript
+ * const { finalGrid, metricsHistory } = evolveEnhanced(
+ *   grid,
+ *   rule,
+ *   neighborhood,
+ *   100
+ * );
+ * // metricsHistory includes entropy and stateHash for each step
+ * ```
+ */
+export function evolveEnhanced(
+  initialGrid: Grid,
+  rule: Rule,
+  neighborhood: number[][],
+  steps: number,
+  metricsInterval = 1
+): { finalGrid: Grid; metricsHistory: EnhancedMetrics[] } {
+  let state = createStepper(initialGrid);
+  const metricsHistory: EnhancedMetrics[] = [];
+
+  for (let i = 0; i < steps; i++) {
+    const result = stepEnhanced(state, rule, neighborhood);
+    state = result.state;
+
+    if ((i + 1) % metricsInterval === 0) {
+      metricsHistory.push(result.metrics);
+    }
+  }
+
+  return {
+    finalGrid: state.currentGrid,
+    metricsHistory,
   };
 }
