@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { runExperiment, hashBasedClassifier } from '../experiment.js';
+import { describe, expect, it } from 'vitest';
+import { hashBasedClassifier, runExperiment } from '../experiment.js';
 import type { Metrics, OutcomeClassifier } from '../types.js';
 
 describe('experiment', () => {
@@ -202,7 +202,7 @@ describe('experiment', () => {
       expect(result.metricsHistory).toHaveLength(4);
     });
 
-    it('should handle 2D Conway\'s Game of Life', () => {
+    it("should handle 2D Conway's Game of Life", () => {
       const result = runExperiment({
         dimensions: [20, 20],
         neighborhood: { type: 'moore', range: 1 },

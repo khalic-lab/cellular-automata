@@ -6,16 +6,16 @@
  */
 
 import type { Grid } from '../grid.js';
-import type { ExperimentConfig, EnhancedMetrics, Rule } from '../types.js';
 import { createGrid, initializeRandom } from '../grid.js';
 import { generateNeighborhood, getMaxNeighbors } from '../neighborhood.js';
-import { ruleFromThresholds, shouldCellBeAlive } from '../rule.js';
 import { createRandom } from '../random.js';
-import { renderGridSlice, formatMetrics } from './terminal.js';
+import { ruleFromThresholds, shouldCellBeAlive } from '../rule.js';
+import type { EnhancedMetrics, ExperimentConfig, Rule } from '../types.js';
+import { formatMetrics, renderGridSlice } from './terminal.js';
 import type {
+  AnimationController,
   AnimationOptions,
   AnimationResult,
-  AnimationController,
   VisualizationFrame,
 } from './types.js';
 import { CHARSETS } from './types.js';
@@ -58,7 +58,7 @@ const log = globalThis.console?.log ?? (() => {});
  * Sleep for specified milliseconds.
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -84,11 +84,7 @@ function createStepper(initialGrid: Grid): StepperState {
 /**
  * Counts alive neighbors for a cell.
  */
-function countNeighbors(
-  grid: Grid,
-  coord: number[],
-  neighborhood: number[][]
-): number {
+function countNeighbors(grid: Grid, coord: number[], neighborhood: number[][]): number {
   let count = 0;
   for (const offset of neighborhood) {
     const neighborCoord = coord.map((c, i) => c + offset[i]!);
@@ -101,11 +97,7 @@ function countNeighbors(
 /**
  * Advances grid by one generation.
  */
-function stepGrid(
-  state: StepperState,
-  rule: Rule,
-  neighborhood: number[][]
-): StepperState {
+function stepGrid(state: StepperState, rule: Rule, neighborhood: number[][]): StepperState {
   const { currentGrid, nextGrid } = state;
   const coord = new Array(currentGrid.dimensions.length).fill(0);
 
@@ -135,11 +127,7 @@ function stepGrid(
 /**
  * Computes metrics for a grid.
  */
-function computeMetrics(
-  grid: Grid,
-  previousPopulation: number,
-  step: number
-): EnhancedMetrics {
+function computeMetrics(grid: Grid, previousPopulation: number, step: number): EnhancedMetrics {
   const population = grid.countPopulation();
   const delta = population - previousPopulation;
 
@@ -163,11 +151,7 @@ function renderAnimationFrame(
   totalSteps: number,
   options: AnimationOptions
 ): string {
-  const {
-    showMetrics = true,
-    showProgress = true,
-    ...sliceOptions
-  } = options;
+  const { showMetrics = true, showProgress = true, ...sliceOptions } = options;
 
   const lines: string[] = [];
 
@@ -197,7 +181,7 @@ function renderAnimationFrame(
 function createProgressBar(percent: number, width: number): string {
   const filled = Math.round((percent / 100) * width);
   const empty = width - filled;
-  return '[' + '='.repeat(filled) + ' '.repeat(empty) + ']';
+  return `[${'='.repeat(filled)}${' '.repeat(empty)}]`;
 }
 
 /**
@@ -297,7 +281,7 @@ export function animate(
       for (let i = 0; i < steps && !stopped; i++) {
         // Handle pause
         while (paused && !stopped) {
-          await new Promise<void>(resolve => {
+          await new Promise<void>((resolve) => {
             pauseResolve = resolve;
           });
         }
@@ -359,7 +343,6 @@ export function animate(
 
       onComplete?.(result);
       return result;
-
     } finally {
       // Show cursor again
       if (clearScreen) {
@@ -433,10 +416,7 @@ export async function animateAsync(
  * @param frameInterval - Capture every N steps (default: 1)
  * @returns Array of frames
  */
-export function collectFrames(
-  config: ExperimentConfig,
-  frameInterval: number = 1
-): VisualizationFrame[] {
+export function collectFrames(config: ExperimentConfig, frameInterval = 1): VisualizationFrame[] {
   const {
     dimensions,
     neighborhood: neighborhoodConfig,
@@ -520,7 +500,7 @@ export function playFrames(
     try {
       for (let i = 0; i < frames.length && !stopped; i++) {
         while (paused && !stopped) {
-          await new Promise<void>(resolve => {
+          await new Promise<void>((resolve) => {
             pauseResolve = resolve;
           });
         }
@@ -551,13 +531,12 @@ export function playFrames(
       if (!stopped) {
         log('');
         log('─'.repeat(40));
-        log(`Playback complete`);
+        log('Playback complete');
         log(`Frames: ${frames.length}, Final population: ${result.finalPopulation}`);
       }
 
       onComplete?.(result);
       return result;
-
     } finally {
       if (clearScreen) {
         write(ANSI.showCursor);

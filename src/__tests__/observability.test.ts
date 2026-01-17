@@ -1,43 +1,43 @@
-import { describe, it, expect, vi } from 'vitest';
-import type { ExperimentConfig, Metrics, EnhancedMetrics } from '../types.js';
+import { describe, expect, it, vi } from 'vitest';
 import { runExperiment, runExperimentEnhanced } from '../experiment.js';
 import { createGrid, initializeRandom } from '../grid.js';
-import { createRandom } from '../random.js';
 import { generateNeighborhood, getMaxNeighbors } from '../neighborhood.js';
-import { ruleFromThresholds } from '../rule.js';
 import {
   type InstrumentedEnhancedResult,
   // Analyzer
   analyzeExperiment,
-  generateEventsFromMetrics,
   buildMetricsTimeline,
-  generateExperimentId,
-  // Instrumented runners
-  runExperimentInstrumented,
-  runExperimentEnhancedInstrumented,
-  runExperimentDeepInstrumented,
-  evolveWithSnapshots,
-  resumeFromSnapshot,
+  compressSnapshot,
   // Snapshot functions
   createSnapshot,
-  restoreGridFromSnapshot,
-  serializeSnapshot,
-  deserializeSnapshot,
-  validateSnapshot,
-  snapshotSize,
-  compressSnapshot,
   decompressSnapshot,
+  deserializeSnapshot,
+  evolveWithSnapshots,
   // Console formatter
   formatReportOneLine,
   // JSON formatters
   formatReportToJson,
   formatReportToJsonLines,
-  formatSummaryToJson,
-  parseReportFromJson,
   // OTel formatters
   formatReportToOTel,
   formatSpansToOtlpJson,
+  formatSummaryToJson,
+  generateEventsFromMetrics,
+  generateExperimentId,
+  parseReportFromJson,
+  restoreGridFromSnapshot,
+  resumeFromSnapshot,
+  runExperimentDeepInstrumented,
+  runExperimentEnhancedInstrumented,
+  // Instrumented runners
+  runExperimentInstrumented,
+  serializeSnapshot,
+  snapshotSize,
+  validateSnapshot,
 } from '../observability/index.js';
+import { createRandom } from '../random.js';
+import { ruleFromThresholds } from '../rule.js';
+import type { EnhancedMetrics, ExperimentConfig, Metrics } from '../types.js';
 
 describe('observability', () => {
   const baseConfig: ExperimentConfig = {
@@ -76,10 +76,10 @@ describe('observability', () => {
 
       const events = generateEventsFromMetrics(metrics);
 
-      const lifecycleEvents = events.filter(e => e.category === 'lifecycle');
+      const lifecycleEvents = events.filter((e) => e.category === 'lifecycle');
       expect(lifecycleEvents.length).toBe(2); // start and end
-      expect(lifecycleEvents.map(e => e.type)).toContain('experiment_started');
-      expect(lifecycleEvents.map(e => e.type)).toContain('experiment_completed');
+      expect(lifecycleEvents.map((e) => e.type)).toContain('experiment_started');
+      expect(lifecycleEvents.map((e) => e.type)).toContain('experiment_completed');
     });
 
     it('should detect extinction event', () => {
@@ -91,7 +91,7 @@ describe('observability', () => {
 
       const events = generateEventsFromMetrics(metrics);
 
-      const extinctionEvent = events.find(e => e.type === 'extinction');
+      const extinctionEvent = events.find((e) => e.type === 'extinction');
       expect(extinctionEvent).toBeDefined();
       expect(extinctionEvent?.step).toBe(3);
     });
@@ -104,7 +104,7 @@ describe('observability', () => {
 
       const events = generateEventsFromMetrics(metrics);
 
-      const spikeEvent = events.find(e => e.type === 'population_spike_up');
+      const spikeEvent = events.find((e) => e.type === 'population_spike_up');
       expect(spikeEvent).toBeDefined();
       expect(spikeEvent?.step).toBe(2);
     });
@@ -127,7 +127,16 @@ describe('observability', () => {
 
     it('should include entropy for enhanced metrics', () => {
       const metrics: EnhancedMetrics[] = [
-        { population: 30, density: 0.3, births: 0, deaths: 0, delta: 0, step: 1, entropy: 0.8, stateHash: 123 },
+        {
+          population: 30,
+          density: 0.3,
+          births: 0,
+          deaths: 0,
+          delta: 0,
+          step: 1,
+          entropy: 0.8,
+          stateHash: 123,
+        },
       ];
 
       const timeline = buildMetricsTimeline(metrics);
@@ -348,7 +357,11 @@ describe('observability', () => {
       const { type, range = 1 } = baseConfig.neighborhood;
       const neighborhood = generateNeighborhood(baseConfig.dimensions, { type, range });
       const maxNeighbors = getMaxNeighbors(baseConfig.dimensions, type, range);
-      const rule = ruleFromThresholds(baseConfig.rule.birth, baseConfig.rule.survival, maxNeighbors);
+      const rule = ruleFromThresholds(
+        baseConfig.rule.birth,
+        baseConfig.rule.survival,
+        maxNeighbors
+      );
 
       const result = evolveWithSnapshots(grid, rule, neighborhood, 20, baseConfig, {
         metricsInterval: 1,
@@ -368,7 +381,11 @@ describe('observability', () => {
       const { type, range = 1 } = baseConfig.neighborhood;
       const neighborhood = generateNeighborhood(baseConfig.dimensions, { type, range });
       const maxNeighbors = getMaxNeighbors(baseConfig.dimensions, type, range);
-      const rule = ruleFromThresholds(baseConfig.rule.birth, baseConfig.rule.survival, maxNeighbors);
+      const rule = ruleFromThresholds(
+        baseConfig.rule.birth,
+        baseConfig.rule.survival,
+        maxNeighbors
+      );
 
       const callback = vi.fn();
 
@@ -468,7 +485,7 @@ describe('observability', () => {
         expect(spans.length).toBeGreaterThan(0);
 
         // Root span
-        const rootSpan = spans.find(s => s.name === 'experiment');
+        const rootSpan = spans.find((s) => s.name === 'experiment');
         expect(rootSpan).toBeDefined();
         expect(rootSpan?.attributes['experiment.outcome']).toBe(result.outcome);
       });
@@ -477,9 +494,9 @@ describe('observability', () => {
         const result = runExperimentDeepInstrumented(baseConfig);
         const spans = formatReportToOTel(result.report);
 
-        const initSpan = spans.find(s => s.name === 'initialization');
-        const evolutionSpan = spans.find(s => s.name === 'evolution');
-        const classificationSpan = spans.find(s => s.name === 'classification');
+        const initSpan = spans.find((s) => s.name === 'initialization');
+        const evolutionSpan = spans.find((s) => s.name === 'evolution');
+        const classificationSpan = spans.find((s) => s.name === 'classification');
 
         expect(initSpan).toBeDefined();
         expect(evolutionSpan).toBeDefined();
@@ -524,8 +541,8 @@ describe('observability', () => {
 
       // Verify events
       expect(result.report.events.length).toBeGreaterThan(0);
-      expect(result.report.events.some(e => e.type === 'experiment_started')).toBe(true);
-      expect(result.report.events.some(e => e.type === 'experiment_completed')).toBe(true);
+      expect(result.report.events.some((e) => e.type === 'experiment_started')).toBe(true);
+      expect(result.report.events.some((e) => e.type === 'experiment_completed')).toBe(true);
 
       // Verify timeline
       expect(result.report.metricsTimeline.length).toBe(10); // 50 steps / 5 interval

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { generateNeighborhood, getMaxNeighbors } from '../neighborhood.js';
 
 describe('neighborhood', () => {
@@ -36,9 +36,7 @@ describe('neighborhood', () => {
       ];
 
       for (const diagonal of diagonals) {
-        const found = neighbors.some(
-          ([x, y]) => x === diagonal[0] && y === diagonal[1]
-        );
+        const found = neighbors.some(([x, y]) => x === diagonal[0] && y === diagonal[1]);
         expect(found).toBe(true);
       }
     });
@@ -54,9 +52,7 @@ describe('neighborhood', () => {
       ];
 
       for (const offset of orthogonal) {
-        const found = neighbors.some(
-          ([x, y]) => x === offset[0] && y === offset[1]
-        );
+        const found = neighbors.some(([x, y]) => x === offset[0] && y === offset[1]);
         expect(found).toBe(true);
       }
     });
@@ -108,9 +104,7 @@ describe('neighborhood', () => {
       ];
 
       for (const diagonal of diagonals) {
-        const found = neighbors.some(
-          ([x, y]) => x === diagonal[0] && y === diagonal[1]
-        );
+        const found = neighbors.some(([x, y]) => x === diagonal[0] && y === diagonal[1]);
         expect(found).toBe(false);
       }
     });
@@ -128,9 +122,7 @@ describe('neighborhood', () => {
       expect(neighbors).toHaveLength(4);
 
       for (const offset of orthogonal) {
-        const found = neighbors.some(
-          ([x, y]) => x === offset[0] && y === offset[1]
-        );
+        const found = neighbors.some(([x, y]) => x === offset[0] && y === offset[1]);
         expect(found).toBe(true);
       }
     });

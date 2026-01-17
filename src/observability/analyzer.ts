@@ -8,21 +8,21 @@
  * No side effects, no modification of core functions.
  */
 
+import type { ClassificationResult } from '../classifier.js';
+import type { EnhancedExperimentResult } from '../experiment.js';
 import type {
-  Metrics,
   EnhancedMetrics,
+  ExperimentResult,
+  Metrics,
   Outcome,
   WolframClass,
-  ExperimentResult,
 } from '../types.js';
-import type { EnhancedExperimentResult } from '../experiment.js';
-import type { ClassificationResult } from '../classifier.js';
 import type {
-  ObservabilityEvent,
   ClassificationTrace,
-  MetricsTimelineEntry,
   ExperimentSummary,
   ExperimentTiming,
+  MetricsTimelineEntry,
+  ObservabilityEvent,
   ObservabilityReport,
 } from './types.js';
 
@@ -99,7 +99,7 @@ export function generateEventsFromMetrics(
     }
 
     // Near-extinction warning (< 5% of max population seen)
-    const maxPopulation = Math.max(...metricsHistory.slice(0, i + 1).map(x => x.population));
+    const maxPopulation = Math.max(...metricsHistory.slice(0, i + 1).map((x) => x.population));
     if (m.population > 0 && m.population < maxPopulation * 0.05 && !prevExtinctionWarned) {
       events.push({
         type: 'near_extinction',
@@ -109,7 +109,7 @@ export function generateEventsFromMetrics(
         data: {
           population: m.population,
           maxPopulation,
-          percentOfMax: (m.population / maxPopulation * 100).toFixed(1),
+          percentOfMax: ((m.population / maxPopulation) * 100).toFixed(1),
         },
       });
       prevExtinctionWarned = true;
@@ -258,10 +258,7 @@ export function traceClassification(
  * Builds a minimal classification trace from basic experiment result.
  * Used when enhanced classification data is not available.
  */
-function traceClassificationBasic(
-  metrics: Metrics[],
-  outcome: Outcome
-): ClassificationTrace {
+function traceClassificationBasic(metrics: Metrics[], outcome: Outcome): ClassificationTrace {
   const reasoningPath: string[] = [];
   let wolframClass: WolframClass = 'class2_stable';
 
@@ -286,10 +283,12 @@ function traceClassificationBasic(
   // Analyze population trend
   let populationTrend: 'growing' | 'shrinking' | 'stable' | 'oscillating' = 'stable';
   if (metrics.length > 2) {
-    const earlyAvg = metrics.slice(0, Math.floor(metrics.length / 2))
-      .reduce((sum, m) => sum + m.population, 0) / Math.floor(metrics.length / 2);
-    const lateAvg = metrics.slice(Math.floor(metrics.length / 2))
-      .reduce((sum, m) => sum + m.population, 0) / Math.ceil(metrics.length / 2);
+    const earlyAvg =
+      metrics.slice(0, Math.floor(metrics.length / 2)).reduce((sum, m) => sum + m.population, 0) /
+      Math.floor(metrics.length / 2);
+    const lateAvg =
+      metrics.slice(Math.floor(metrics.length / 2)).reduce((sum, m) => sum + m.population, 0) /
+      Math.ceil(metrics.length / 2);
 
     if (lateAvg > earlyAvg * 1.2) populationTrend = 'growing';
     else if (lateAvg < earlyAvg * 0.8) populationTrend = 'shrinking';
@@ -320,13 +319,15 @@ export function buildSummary(
 
   const initialPopulation = metricsHistory.length > 0 ? metricsHistory[0]!.population : 0;
   const populationChange = finalPopulation - initialPopulation;
-  const populationChangePercent = initialPopulation > 0
-    ? (populationChange / initialPopulation) * 100
-    : 0;
+  const populationChangePercent =
+    initialPopulation > 0 ? (populationChange / initialPopulation) * 100 : 0;
 
-  const wolframClass = 'wolframClass' in result
-    ? result.wolframClass
-    : (outcome === 'extinct' ? 'extinct' : 'class2_stable');
+  const wolframClass =
+    'wolframClass' in result
+      ? result.wolframClass
+      : outcome === 'extinct'
+        ? 'extinct'
+        : 'class2_stable';
 
   return {
     dimensions: config.dimensions.join('x'),
@@ -358,7 +359,8 @@ export function analyzeExperiment(
   const experimentId = generateExperimentId();
 
   // Determine if we have enhanced metrics
-  const isEnhanced = 'wolframClass' in result &&
+  const isEnhanced =
+    'wolframClass' in result &&
     result.metricsHistory.length > 0 &&
     isEnhancedMetrics(result.metricsHistory[0]!);
 
@@ -366,15 +368,12 @@ export function analyzeExperiment(
   let classification: ClassificationTrace;
   if (isEnhanced) {
     const enhancedResult = result as EnhancedExperimentResult;
-    classification = traceClassification(
-      enhancedResult.metricsHistory,
-      {
-        outcome: enhancedResult.outcome,
-        wolframClass: enhancedResult.wolframClass,
-        confidence: enhancedResult.confidence,
-        details: enhancedResult.details,
-      }
-    );
+    classification = traceClassification(enhancedResult.metricsHistory, {
+      outcome: enhancedResult.outcome,
+      wolframClass: enhancedResult.wolframClass,
+      confidence: enhancedResult.confidence,
+      details: enhancedResult.details,
+    });
   } else {
     classification = traceClassificationBasic(result.metricsHistory, result.outcome);
   }

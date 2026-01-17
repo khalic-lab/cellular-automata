@@ -4,7 +4,9 @@
  */
 
 // Node.js globals for CLI
-interface Buffer { toString: () => string }
+interface Buffer {
+  toString: () => string;
+}
 declare const process: {
   stdout: { write: (s: string) => void };
   stdin: {
@@ -17,7 +19,7 @@ declare const process: {
 };
 declare const console: { log: (...args: unknown[]) => void; error: (...args: unknown[]) => void };
 
-import { animate, CHARSETS } from '../visualization/index.js';
+import { CHARSETS, animate } from '../visualization/index.js';
 
 // Terminal helpers
 const write = (s: string) => process.stdout.write(s);
@@ -76,12 +78,27 @@ const DENSITIES: MenuOption<number>[] = [
 
 const RULES: MenuOption<{ birth: number[]; survival: number[]; name: string }>[] = [
   { label: 'Conway (B3/S23) - Classic', value: { birth: [3], survival: [2, 3], name: 'Conway' } },
-  { label: 'HighLife (B36/S23) - More chaos', value: { birth: [3, 6], survival: [2, 3], name: 'HighLife' } },
-  { label: 'Day & Night (B3678/S34678)', value: { birth: [3, 6, 7, 8], survival: [3, 4, 6, 7, 8], name: 'Day & Night' } },
+  {
+    label: 'HighLife (B36/S23) - More chaos',
+    value: { birth: [3, 6], survival: [2, 3], name: 'HighLife' },
+  },
+  {
+    label: 'Day & Night (B3678/S34678)',
+    value: { birth: [3, 6, 7, 8], survival: [3, 4, 6, 7, 8], name: 'Day & Night' },
+  },
   { label: 'Seeds (B2/S) - Explosive', value: { birth: [2], survival: [], name: 'Seeds' } },
-  { label: 'Life without Death (B3/S012345678)', value: { birth: [3], survival: [0, 1, 2, 3, 4, 5, 6, 7, 8], name: 'Life without Death' } },
-  { label: 'Diamoeba (B35678/S5678)', value: { birth: [3, 5, 6, 7, 8], survival: [5, 6, 7, 8], name: 'Diamoeba' } },
-  { label: 'Replicator (B1357/S1357)', value: { birth: [1, 3, 5, 7], survival: [1, 3, 5, 7], name: 'Replicator' } },
+  {
+    label: 'Life without Death (B3/S012345678)',
+    value: { birth: [3], survival: [0, 1, 2, 3, 4, 5, 6, 7, 8], name: 'Life without Death' },
+  },
+  {
+    label: 'Diamoeba (B35678/S5678)',
+    value: { birth: [3, 5, 6, 7, 8], survival: [5, 6, 7, 8], name: 'Diamoeba' },
+  },
+  {
+    label: 'Replicator (B1357/S1357)',
+    value: { birth: [1, 3, 5, 7], survival: [1, 3, 5, 7], name: 'Replicator' },
+  },
 ];
 
 /**
@@ -106,24 +123,30 @@ async function readKey(): Promise<string> {
 async function selectMenu<T>(
   title: string,
   options: MenuOption<T>[],
-  defaultIndex: number = 0
+  defaultIndex = 0
 ): Promise<T> {
   let selected = defaultIndex;
 
   const render = () => {
     write(ANSI.clear);
     writeln(`${ANSI.bold}${ANSI.cyan}╔════════════════════════════════════════╗${ANSI.reset}`);
-    writeln(`${ANSI.bold}${ANSI.cyan}║${ANSI.reset}  ${ANSI.bold}${title.padEnd(36)}${ANSI.reset}  ${ANSI.cyan}║${ANSI.reset}`);
+    writeln(
+      `${ANSI.bold}${ANSI.cyan}║${ANSI.reset}  ${ANSI.bold}${title.padEnd(36)}${ANSI.reset}  ${ANSI.cyan}║${ANSI.reset}`
+    );
     writeln(`${ANSI.bold}${ANSI.cyan}╠════════════════════════════════════════╣${ANSI.reset}`);
 
     for (let i = 0; i < options.length; i++) {
       const prefix = i === selected ? `${ANSI.green}▸ ` : '  ';
       const style = i === selected ? ANSI.bold : ANSI.dim;
-      writeln(`${ANSI.cyan}║${ANSI.reset} ${prefix}${style}${options[i]!.label.padEnd(35)}${ANSI.reset} ${ANSI.cyan}║${ANSI.reset}`);
+      writeln(
+        `${ANSI.cyan}║${ANSI.reset} ${prefix}${style}${options[i]!.label.padEnd(35)}${ANSI.reset} ${ANSI.cyan}║${ANSI.reset}`
+      );
     }
 
     writeln(`${ANSI.bold}${ANSI.cyan}╠════════════════════════════════════════╣${ANSI.reset}`);
-    writeln(`${ANSI.cyan}║${ANSI.reset}  ${ANSI.dim}↑/↓ navigate  •  Enter select  •  q quit${ANSI.reset} ${ANSI.cyan}║${ANSI.reset}`);
+    writeln(
+      `${ANSI.cyan}║${ANSI.reset}  ${ANSI.dim}↑/↓ navigate  •  Enter select  •  q quit${ANSI.reset} ${ANSI.cyan}║${ANSI.reset}`
+    );
     writeln(`${ANSI.bold}${ANSI.cyan}╚════════════════════════════════════════╝${ANSI.reset}`);
   };
 
@@ -132,15 +155,19 @@ async function selectMenu<T>(
   while (true) {
     const key = await readKey();
 
-    if (key === '\x1B[A' || key === 'k') { // Up arrow or k
+    if (key === '\x1B[A' || key === 'k') {
+      // Up arrow or k
       selected = (selected - 1 + options.length) % options.length;
       render();
-    } else if (key === '\x1B[B' || key === 'j') { // Down arrow or j
+    } else if (key === '\x1B[B' || key === 'j') {
+      // Down arrow or j
       selected = (selected + 1) % options.length;
       render();
-    } else if (key === '\r' || key === '\n' || key === ' ') { // Enter or space
+    } else if (key === '\r' || key === '\n' || key === ' ') {
+      // Enter or space
       return options[selected]!.value;
-    } else if (key === 'q' || key === '\x03') { // q or Ctrl+C
+    } else if (key === 'q' || key === '\x03') {
+      // q or Ctrl+C
       write(ANSI.clear);
       writeln('Bye! 👋');
       process.exit(0);
@@ -154,24 +181,48 @@ async function selectMenu<T>(
 async function confirmStart(config: Config): Promise<boolean> {
   write(ANSI.clear);
   writeln(`${ANSI.bold}${ANSI.cyan}╔════════════════════════════════════════╗${ANSI.reset}`);
-  writeln(`${ANSI.bold}${ANSI.cyan}║${ANSI.reset}  ${ANSI.bold}Ready to Launch!                    ${ANSI.reset}  ${ANSI.cyan}║${ANSI.reset}`);
+  writeln(
+    `${ANSI.bold}${ANSI.cyan}║${ANSI.reset}  ${ANSI.bold}Ready to Launch!                    ${ANSI.reset}  ${ANSI.cyan}║${ANSI.reset}`
+  );
   writeln(`${ANSI.bold}${ANSI.cyan}╠════════════════════════════════════════╣${ANSI.reset}`);
-  writeln(`${ANSI.cyan}║${ANSI.reset}  ${ANSI.yellow}Grid:${ANSI.reset}     ${config.size}x${config.size}`.padEnd(49) + `${ANSI.cyan}║${ANSI.reset}`);
-  writeln(`${ANSI.cyan}║${ANSI.reset}  ${ANSI.yellow}Speed:${ANSI.reset}    ${config.speed}ms/frame`.padEnd(49) + `${ANSI.cyan}║${ANSI.reset}`);
-  writeln(`${ANSI.cyan}║${ANSI.reset}  ${ANSI.yellow}Density:${ANSI.reset}  ${(config.density * 100).toFixed(0)}%`.padEnd(49) + `${ANSI.cyan}║${ANSI.reset}`);
-  writeln(`${ANSI.cyan}║${ANSI.reset}  ${ANSI.yellow}Rule:${ANSI.reset}     ${config.ruleName}`.padEnd(49) + `${ANSI.cyan}║${ANSI.reset}`);
-  writeln(`${ANSI.cyan}║${ANSI.reset}  ${ANSI.yellow}Seed:${ANSI.reset}     ${config.seed}`.padEnd(49) + `${ANSI.cyan}║${ANSI.reset}`);
+  writeln(
+    `${`${ANSI.cyan}║${ANSI.reset}  ${ANSI.yellow}Grid:${ANSI.reset}     ${config.size}x${config.size}`.padEnd(
+      49
+    )}${ANSI.cyan}║${ANSI.reset}`
+  );
+  writeln(
+    `${`${ANSI.cyan}║${ANSI.reset}  ${ANSI.yellow}Speed:${ANSI.reset}    ${config.speed}ms/frame`.padEnd(
+      49
+    )}${ANSI.cyan}║${ANSI.reset}`
+  );
+  writeln(
+    `${`${ANSI.cyan}║${ANSI.reset}  ${ANSI.yellow}Density:${ANSI.reset}  ${(config.density * 100).toFixed(0)}%`.padEnd(
+      49
+    )}${ANSI.cyan}║${ANSI.reset}`
+  );
+  writeln(
+    `${`${ANSI.cyan}║${ANSI.reset}  ${ANSI.yellow}Rule:${ANSI.reset}     ${config.ruleName}`.padEnd(
+      49
+    )}${ANSI.cyan}║${ANSI.reset}`
+  );
+  writeln(
+    `${`${ANSI.cyan}║${ANSI.reset}  ${ANSI.yellow}Seed:${ANSI.reset}     ${config.seed}`.padEnd(49)}${ANSI.cyan}║${ANSI.reset}`
+  );
   writeln(`${ANSI.bold}${ANSI.cyan}╠════════════════════════════════════════╣${ANSI.reset}`);
-  writeln(`${ANSI.cyan}║${ANSI.reset}  ${ANSI.dim}Enter to start  •  r to reconfigure  •  q quit${ANSI.reset}${ANSI.cyan}║${ANSI.reset}`);
+  writeln(
+    `${ANSI.cyan}║${ANSI.reset}  ${ANSI.dim}Enter to start  •  r to reconfigure  •  q quit${ANSI.reset}${ANSI.cyan}║${ANSI.reset}`
+  );
   writeln(`${ANSI.bold}${ANSI.cyan}╚════════════════════════════════════════╝${ANSI.reset}`);
 
   while (true) {
     const key = await readKey();
     if (key === '\r' || key === '\n' || key === ' ') {
       return true;
-    } else if (key === 'r') {
+    }
+    if (key === 'r') {
       return false;
-    } else if (key === 'q' || key === '\x03') {
+    }
+    if (key === 'q' || key === '\x03') {
       write(ANSI.clear);
       writeln('Bye! 👋');
       process.exit(0);
@@ -185,19 +236,22 @@ async function confirmStart(config: Config): Promise<boolean> {
 async function runAnimation(config: Config): Promise<void> {
   write(ANSI.clear);
 
-  const controller = animate({
-    dimensions: [config.size, config.size],
-    neighborhood: { type: 'moore', range: 1 },
-    rule: config.rule,
-    steps: 1000, // Long run
-    initialDensity: config.density,
-    seed: config.seed,
-  }, {
-    frameDelayMs: config.speed,
-    charset: CHARSETS.blocks,
-    showMetrics: true,
-    showProgress: true,
-  });
+  const controller = animate(
+    {
+      dimensions: [config.size, config.size],
+      neighborhood: { type: 'moore', range: 1 },
+      rule: config.rule,
+      steps: 1000, // Long run
+      initialDensity: config.density,
+      seed: config.seed,
+    },
+    {
+      frameDelayMs: config.speed,
+      charset: CHARSETS.blocks,
+      showMetrics: true,
+      showProgress: true,
+    }
+  );
 
   // Allow stopping with any key
   writeln(`${ANSI.dim}Press any key to stop...${ANSI.reset}\n`);

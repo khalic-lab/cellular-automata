@@ -64,12 +64,12 @@ export type SeededRandom = {
  * All properties are readonly for immutability.
  */
 export type Metrics = {
-  readonly population: number;  // Count of alive cells
-  readonly density: number;     // Fraction of alive cells [0, 1]
-  readonly births: number;      // Cells that became alive this step
-  readonly deaths: number;      // Cells that died this step
-  readonly delta: number;       // Net change (births - deaths)
-  readonly step: number;        // Step number (0-indexed)
+  readonly population: number; // Count of alive cells
+  readonly density: number; // Fraction of alive cells [0, 1]
+  readonly births: number; // Cells that became alive this step
+  readonly deaths: number; // Cells that died this step
+  readonly delta: number; // Net change (births - deaths)
+  readonly step: number; // Step number (0-indexed)
 };
 
 /**
@@ -83,8 +83,8 @@ export type Metrics = {
  * Reference: Hamming distance classification (arXiv 2407.06175)
  */
 export type EnhancedMetrics = Metrics & {
-  readonly entropy: number;     // Spatial entropy [0, 1], higher = more disorder
-  readonly stateHash: number;   // FNV-1a hash for exact state comparison
+  readonly entropy: number; // Spatial entropy [0, 1], higher = more disorder
+  readonly stateHash: number; // FNV-1a hash for exact state comparison
 };
 
 /**
@@ -118,12 +118,10 @@ export type WolframClass =
  * Function that classifies using enhanced metrics.
  * Returns both simple Outcome and Wolfram class.
  */
-export type EnhancedOutcomeClassifier = (
-  metricsHistory: EnhancedMetrics[]
-) => {
+export type EnhancedOutcomeClassifier = (metricsHistory: EnhancedMetrics[]) => {
   outcome: Outcome;
   wolframClass: WolframClass;
-  confidence: number;  // 0-1 confidence in classification
+  confidence: number; // 0-1 confidence in classification
   details: {
     cycleDetected: boolean;
     cyclePeriod: number | null;
@@ -151,7 +149,7 @@ export interface ExperimentConfig {
   /** Neighborhood configuration */
   neighborhood: {
     type: NeighborhoodType;
-    range?: number;  // Default: 1
+    range?: number; // Default: 1
   };
 
   /** Rule configuration with birth/survival thresholds */

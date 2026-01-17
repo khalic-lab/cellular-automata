@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { evolve } from '../stepper.js';
+import { describe, expect, it } from 'vitest';
 import { createGrid } from '../grid.js';
 import { generateNeighborhood } from '../neighborhood.js';
 import { createRule } from '../rule.js';
+import { evolve } from '../stepper.js';
 
 describe('stepper', () => {
   describe('evolve', () => {
@@ -90,7 +90,7 @@ describe('stepper', () => {
       expect(metricsHistory).toHaveLength(4);
     });
 
-    it('should correctly simulate Conway\'s blinker pattern', () => {
+    it("should correctly simulate Conway's blinker pattern", () => {
       const grid = createGrid([5, 5]);
       // Horizontal blinker
       grid.set([2, 1], 1);
@@ -115,7 +115,7 @@ describe('stepper', () => {
       expect(grid2.get([2, 3])).toBe(1);
     });
 
-    it('should correctly simulate Conway\'s block pattern (still life)', () => {
+    it("should correctly simulate Conway's block pattern (still life)", () => {
       const grid = createGrid([5, 5]);
       // 2x2 block
       grid.set([2, 2], 1);

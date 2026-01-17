@@ -12,37 +12,32 @@
  * wraps or reimplements to add timing without side effects in core.
  */
 
-import type {
-  ExperimentConfig,
-  OutcomeClassifier,
-  Rule,
-  EnhancedMetrics,
-} from '../types.js';
+import { multiMetricClassifier } from '../classifier.js';
+import { runExperiment, runExperimentEnhanced } from '../experiment.js';
+import type { EnhancedExperimentResult } from '../experiment.js';
 import {
-  Grid,
-  createGrid,
-  initializeRandom,
+  type Grid,
   computeSpatialEntropy,
   computeStateHash,
+  createGrid,
+  initializeRandom,
 } from '../grid.js';
 import { generateNeighborhood, getMaxNeighbors } from '../neighborhood.js';
+import { createRandom } from '../random.js';
 import { ruleFromThresholds, shouldCellBeAlive } from '../rule.js';
 import { evolveEnhanced } from '../stepper.js';
-import { createRandom } from '../random.js';
-import { runExperiment, runExperimentEnhanced } from '../experiment.js';
-import { multiMetricClassifier } from '../classifier.js';
-import type { EnhancedExperimentResult } from '../experiment.js';
+import type { EnhancedMetrics, ExperimentConfig, OutcomeClassifier, Rule } from '../types.js';
 import { analyzeExperiment } from './analyzer.js';
 import { createSnapshot, restoreGridFromSnapshot } from './snapshot.js';
 import type {
-  ExperimentTiming,
-  StepTiming,
-  InstrumentedExperimentResult,
-  InstrumentedEnhancedResult,
   ExperimentSnapshot,
+  ExperimentTiming,
+  InstrumentedEnhancedResult,
+  InstrumentedExperimentResult,
   ResumeOptions,
   SnapshotEvolutionOptions,
   SnapshotEvolutionResult,
+  StepTiming,
 } from './types.js';
 
 // Use globalThis for cross-platform performance timing
@@ -75,11 +70,7 @@ function createStepper(initialGrid: Grid): StepperState {
 /**
  * Counts alive neighbors for a cell.
  */
-function countNeighbors(
-  grid: Grid,
-  coord: number[],
-  neighborhood: number[][]
-): number {
+function countNeighbors(grid: Grid, coord: number[], neighborhood: number[][]): number {
   let count = 0;
   for (const offset of neighborhood) {
     const neighborCoord = coord.map((c, i) => c + offset[i]!);
@@ -456,9 +447,7 @@ export function resumeFromSnapshot(
     const stepTimings: StepTiming[] = [];
 
     let state = createStepper(grid);
-    const metricsHistory: EnhancedMetrics[] = [
-      ...(snapshot.metricsHistory as EnhancedMetrics[]),
-    ];
+    const metricsHistory: EnhancedMetrics[] = [...(snapshot.metricsHistory as EnhancedMetrics[])];
 
     for (let i = 0; i < options.additionalSteps; i++) {
       const stepStart = perf.now();
@@ -509,33 +498,29 @@ export function resumeFromSnapshot(
 
     const report = analyzeExperiment(experimentResult, timing);
     return { ...experimentResult, report };
-  } else {
-    // Run without instrumentation (faster)
-    const { finalGrid, metricsHistory: newMetrics } = evolveEnhanced(
-      grid,
-      rule,
-      neighborhood,
-      options.additionalSteps,
-      options.metricsInterval ?? 1
-    );
-
-    const allMetrics = [
-      ...(snapshot.metricsHistory as EnhancedMetrics[]),
-      ...newMetrics,
-    ];
-    const classification = multiMetricClassifier(allMetrics);
-
-    return {
-      outcome: classification.outcome,
-      wolframClass: classification.wolframClass,
-      confidence: classification.confidence,
-      finalPopulation: finalGrid.countPopulation(),
-      metricsHistory: allMetrics,
-      config: {
-        ...config,
-        steps: snapshot.stepsTaken + options.additionalSteps,
-      },
-      details: classification.details,
-    };
   }
+  // Run without instrumentation (faster)
+  const { finalGrid, metricsHistory: newMetrics } = evolveEnhanced(
+    grid,
+    rule,
+    neighborhood,
+    options.additionalSteps,
+    options.metricsInterval ?? 1
+  );
+
+  const allMetrics = [...(snapshot.metricsHistory as EnhancedMetrics[]), ...newMetrics];
+  const classification = multiMetricClassifier(allMetrics);
+
+  return {
+    outcome: classification.outcome,
+    wolframClass: classification.wolframClass,
+    confidence: classification.confidence,
+    finalPopulation: finalGrid.countPopulation(),
+    metricsHistory: allMetrics,
+    config: {
+      ...config,
+      steps: snapshot.stepsTaken + options.additionalSteps,
+    },
+    details: classification.details,
+  };
 }

@@ -9,44 +9,44 @@
  * - Consistency between instrumented and non-instrumented runs
  */
 
-import { describe, it, expect } from 'vitest';
-import type { ExperimentConfig } from '../types.js';
+import { describe, expect, it } from 'vitest';
 import { runExperiment, runExperimentEnhanced } from '../experiment.js';
 import { createGrid, initializeRandom } from '../grid.js';
-import { createRandom } from '../random.js';
 import { generateNeighborhood, getMaxNeighbors } from '../neighborhood.js';
-import { ruleFromThresholds } from '../rule.js';
 import {
-  // Instrumented runners
-  runExperimentInstrumented,
-  runExperimentEnhancedInstrumented,
-  runExperimentDeepInstrumented,
-  evolveWithSnapshots,
-  resumeFromSnapshot,
+  // Types
+  type InstrumentedEnhancedResult,
+  compressSnapshot,
   // Snapshot functions
   createSnapshot,
-  restoreGridFromSnapshot,
-  serializeSnapshot,
-  deserializeSnapshot,
-  validateSnapshot,
-  compressSnapshot,
   decompressSnapshot,
+  deserializeSnapshot,
+  evolveWithSnapshots,
+  formatEventsToJson,
+  formatReportComparison,
   // Formatters
   formatReportOneLine,
   formatReportToJson,
   formatReportToJsonLines,
-  formatSummaryToJson,
-  formatTimingToJson,
-  formatEventsToJson,
-  formatTimelineToJson,
-  parseReportFromJson,
-  formatReportComparison,
   formatReportToOTel,
   formatSpansToOtlpJson,
+  formatSummaryToJson,
+  formatTimelineToJson,
+  formatTimingToJson,
   generateTraceParentHeader,
-  // Types
-  type InstrumentedEnhancedResult,
+  parseReportFromJson,
+  restoreGridFromSnapshot,
+  resumeFromSnapshot,
+  runExperimentDeepInstrumented,
+  runExperimentEnhancedInstrumented,
+  // Instrumented runners
+  runExperimentInstrumented,
+  serializeSnapshot,
+  validateSnapshot,
 } from '../observability/index.js';
+import { createRandom } from '../random.js';
+import { ruleFromThresholds } from '../rule.js';
+import type { ExperimentConfig } from '../types.js';
 
 describe('observability integration', () => {
   // Common test configurations
@@ -136,8 +136,10 @@ describe('observability integration', () => {
       expect(result.report.timing.totalMs).toBeGreaterThanOrEqual(sumOfPhases * 0.9);
 
       // Step timings should sum to evolution time (approximately)
-      const sumOfSteps = result.report.timing.stepTimings!
-        .reduce((sum, s) => sum + s.durationMs, 0);
+      const sumOfSteps = result.report.timing.stepTimings!.reduce(
+        (sum, s) => sum + s.durationMs,
+        0
+      );
       expect(sumOfSteps).toBeCloseTo(result.report.timing.evolutionMs, -1);
     });
 
@@ -307,14 +309,14 @@ describe('observability integration', () => {
       const jsonl = formatReportToJsonLines(result.report);
       const lines = jsonl.split('\n');
       expect(lines.length).toBeGreaterThan(2); // start, events, end
-      lines.forEach(line => {
+      lines.forEach((line) => {
         expect(() => JSON.parse(line)).not.toThrow();
       });
 
       // OpenTelemetry format
       const spans = formatReportToOTel(result.report);
       expect(spans.length).toBeGreaterThan(0);
-      expect(spans.some(s => s.name === 'experiment')).toBe(true);
+      expect(spans.some((s) => s.name === 'experiment')).toBe(true);
 
       // OTLP JSON format
       const otlpJson = formatSpansToOtlpJson(spans);
@@ -339,8 +341,12 @@ describe('observability integration', () => {
       expect(timing.timing.stepTimings).toBeDefined();
 
       // Events filtered by category
-      const lifecycleEvents = JSON.parse(formatEventsToJson(result.report, { category: 'lifecycle' }));
-      expect(lifecycleEvents.events.every((e: { category: string }) => e.category === 'lifecycle')).toBe(true);
+      const lifecycleEvents = JSON.parse(
+        formatEventsToJson(result.report, { category: 'lifecycle' })
+      );
+      expect(
+        lifecycleEvents.events.every((e: { category: string }) => e.category === 'lifecycle')
+      ).toBe(true);
 
       // Timeline with interval
       const timeline = JSON.parse(formatTimelineToJson(result.report, 10));
@@ -379,23 +385,23 @@ describe('observability integration', () => {
       const spans = formatReportToOTel(result.report);
 
       // Find root span
-      const rootSpan = spans.find(s => s.name === 'experiment');
+      const rootSpan = spans.find((s) => s.name === 'experiment');
       expect(rootSpan).toBeDefined();
       expect(rootSpan!.parentSpanId).toBeUndefined();
 
       // Find phase spans
-      const initSpan = spans.find(s => s.name === 'initialization');
-      const evolutionSpan = spans.find(s => s.name === 'evolution');
-      const classificationSpan = spans.find(s => s.name === 'classification');
+      const initSpan = spans.find((s) => s.name === 'initialization');
+      const evolutionSpan = spans.find((s) => s.name === 'evolution');
+      const classificationSpan = spans.find((s) => s.name === 'classification');
 
       expect(initSpan?.parentSpanId).toBe(rootSpan!.spanId);
       expect(evolutionSpan?.parentSpanId).toBe(rootSpan!.spanId);
       expect(classificationSpan?.parentSpanId).toBe(rootSpan!.spanId);
 
       // Find step spans (should be children of evolution)
-      const stepSpans = spans.filter(s => s.name.startsWith('step_'));
+      const stepSpans = spans.filter((s) => s.name.startsWith('step_'));
       expect(stepSpans.length).toBe(10);
-      stepSpans.forEach(s => {
+      stepSpans.forEach((s) => {
         expect(s.parentSpanId).toBe(evolutionSpan!.spanId);
       });
     });
@@ -418,7 +424,7 @@ describe('observability integration', () => {
         });
 
         // Check if population went to 0 at some point during the run
-        const extinctionEvent = result.report.events.find(e => e.type === 'extinction');
+        const extinctionEvent = result.report.events.find((e) => e.type === 'extinction');
         if (extinctionEvent) {
           foundExtinction = true;
           expect(extinctionEvent.step).toBeGreaterThan(0);
@@ -443,7 +449,7 @@ describe('observability integration', () => {
         });
 
         const spikeEvents = result.report.events.filter(
-          e => e.type === 'population_spike_up' || e.type === 'population_spike_down'
+          (e) => e.type === 'population_spike_up' || e.type === 'population_spike_down'
         );
 
         if (spikeEvents.length > 0) {
@@ -460,8 +466,8 @@ describe('observability integration', () => {
     it('should always include lifecycle events', () => {
       const result = runExperimentInstrumented(gameOfLife);
 
-      const startEvent = result.report.events.find(e => e.type === 'experiment_started');
-      const endEvent = result.report.events.find(e => e.type === 'experiment_completed');
+      const startEvent = result.report.events.find((e) => e.type === 'experiment_started');
+      const endEvent = result.report.events.find((e) => e.type === 'experiment_completed');
 
       expect(startEvent).toBeDefined();
       expect(startEvent!.category).toBe('lifecycle');
@@ -487,7 +493,7 @@ describe('observability integration', () => {
         });
 
         const entropyEvents = result.report.events.filter(
-          e => e.type === 'entropy_increase' || e.type === 'entropy_decrease'
+          (e) => e.type === 'entropy_increase' || e.type === 'entropy_decrease'
         );
 
         if (entropyEvents.length > 0) {

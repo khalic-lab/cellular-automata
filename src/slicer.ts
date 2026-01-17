@@ -5,7 +5,7 @@
  * extracting 2D cross-sections while fixing other dimensions.
  */
 
-import { Grid } from './grid.js';
+import type { Grid } from './grid.js';
 
 /**
  * Extracts a 2D slice from an N-dimensional grid.
@@ -36,7 +36,11 @@ import { Grid } from './grid.js';
  */
 export function extractSlice(
   grid: Grid,
-  { axis1, axis2, fixedCoords }: {
+  {
+    axis1,
+    axis2,
+    fixedCoords,
+  }: {
     axis1: number;
     axis2: number;
     fixedCoords: Map<number, number>;
@@ -47,10 +51,7 @@ export function extractSlice(
   const size2 = dimensions[axis2]!;
 
   // Initialize 2D result array
-  const slice: number[][] = Array.from(
-    { length: size1 },
-    () => new Array(size2).fill(0)
-  );
+  const slice: number[][] = Array.from({ length: size1 }, () => new Array(size2).fill(0));
 
   // Build coordinate template with fixed dimensions
   const coord = new Array(dimensions.length).fill(0);

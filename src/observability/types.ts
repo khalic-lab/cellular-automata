@@ -11,16 +11,16 @@
  * a separate layer that wraps or analyzes results post-hoc.
  */
 
-import type {
-  ExperimentConfig,
-  Metrics,
-  EnhancedMetrics,
-  Outcome,
-  WolframClass,
-  ExperimentResult,
-} from '../types.js';
 import type { EnhancedExperimentResult } from '../experiment.js';
 import type { Grid } from '../grid.js';
+import type {
+  EnhancedMetrics,
+  ExperimentConfig,
+  ExperimentResult,
+  Metrics,
+  Outcome,
+  WolframClass,
+} from '../types.js';
 
 /**
  * Verbosity levels for observability output.

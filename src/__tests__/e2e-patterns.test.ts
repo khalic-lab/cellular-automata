@@ -9,17 +9,14 @@
  * All tests run in both regular and instrumented mode via abstraction layer.
  */
 
-import { describe, it, expect } from 'vitest';
-import type { ExperimentConfig, Outcome, WolframClass, EnhancedMetrics } from '../types.js';
-import { Grid, createGrid } from '../grid.js';
-import { evolveEnhanced } from '../stepper.js';
-import { generateNeighborhood, getMaxNeighbors } from '../neighborhood.js';
-import { ruleFromThresholds } from '../rule.js';
+import { describe, expect, it } from 'vitest';
 import { multiMetricClassifier } from '../classifier.js';
-import {
-  analyzeExperiment,
-  type ObservabilityReport,
-} from '../observability/index.js';
+import { type Grid, createGrid } from '../grid.js';
+import { generateNeighborhood, getMaxNeighbors } from '../neighborhood.js';
+import { type ObservabilityReport, analyzeExperiment } from '../observability/index.js';
+import { ruleFromThresholds } from '../rule.js';
+import { evolveEnhanced } from '../stepper.js';
+import type { EnhancedMetrics, ExperimentConfig, Outcome, WolframClass } from '../types.js';
 
 // ============================================================================
 // Pattern Registry
@@ -82,7 +79,12 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'Block',
     description: 'Simplest still life - 2x2 square',
     dimensions: [10, 10],
-    cells: [[4, 4], [4, 5], [5, 4], [5, 5]],
+    cells: [
+      [4, 4],
+      [4, 5],
+      [5, 4],
+      [5, 5],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -97,7 +99,14 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'Beehive',
     description: 'Common 6-cell still life',
     dimensions: [10, 10],
-    cells: [[3, 4], [4, 3], [4, 5], [5, 3], [5, 5], [6, 4]],
+    cells: [
+      [3, 4],
+      [4, 3],
+      [4, 5],
+      [5, 3],
+      [5, 5],
+      [6, 4],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -112,7 +121,15 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'Loaf',
     description: '7-cell still life',
     dimensions: [10, 10],
-    cells: [[3, 4], [4, 3], [4, 5], [5, 3], [5, 6], [6, 4], [6, 5]],
+    cells: [
+      [3, 4],
+      [4, 3],
+      [4, 5],
+      [5, 3],
+      [5, 6],
+      [6, 4],
+      [6, 5],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -127,7 +144,13 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'Boat',
     description: '5-cell still life',
     dimensions: [10, 10],
-    cells: [[3, 3], [3, 4], [4, 3], [4, 5], [5, 4]],
+    cells: [
+      [3, 3],
+      [3, 4],
+      [4, 3],
+      [4, 5],
+      [5, 4],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -142,7 +165,12 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'Tub',
     description: '4-cell still life',
     dimensions: [10, 10],
-    cells: [[4, 3], [3, 4], [5, 4], [4, 5]],
+    cells: [
+      [4, 3],
+      [3, 4],
+      [5, 4],
+      [4, 5],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -159,7 +187,11 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'Blinker',
     description: 'Period-2 oscillator, 3 cells in a line',
     dimensions: [10, 10],
-    cells: [[4, 4], [5, 4], [6, 4]],
+    cells: [
+      [4, 4],
+      [5, 4],
+      [6, 4],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -174,7 +206,14 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'Toad',
     description: 'Period-2 oscillator, 6 cells',
     dimensions: [10, 10],
-    cells: [[4, 4], [4, 5], [4, 6], [5, 3], [5, 4], [5, 5]],
+    cells: [
+      [4, 4],
+      [4, 5],
+      [4, 6],
+      [5, 3],
+      [5, 4],
+      [5, 5],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -189,7 +228,16 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'Beacon',
     description: 'Period-2 oscillator, two diagonally connected blocks',
     dimensions: [10, 10],
-    cells: [[2, 2], [2, 3], [3, 2], [3, 3], [4, 4], [4, 5], [5, 4], [5, 5]],
+    cells: [
+      [2, 2],
+      [2, 3],
+      [3, 2],
+      [3, 3],
+      [4, 4],
+      [4, 5],
+      [5, 4],
+      [5, 5],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -206,7 +254,13 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'Glider',
     description: 'Smallest spaceship, moves diagonally',
     dimensions: [20, 20], // Larger grid so it can move
-    cells: [[1, 2], [2, 3], [3, 1], [3, 2], [3, 3]],
+    cells: [
+      [1, 2],
+      [2, 3],
+      [3, 1],
+      [3, 2],
+      [3, 3],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -227,10 +281,15 @@ const PATTERNS_2D: PatternDefinition[] = [
     // O...O
     // OOOO.
     cells: [
-      [2, 1], [5, 1],        // Row 0: .O..O
-      [1, 2],                 // Row 1: O....
-      [1, 3], [5, 3],        // Row 2: O...O
-      [1, 4], [2, 4], [3, 4], [4, 4], // Row 3: OOOO.
+      [2, 1],
+      [5, 1], // Row 0: .O..O
+      [1, 2], // Row 1: O....
+      [1, 3],
+      [5, 3], // Row 2: O...O
+      [1, 4],
+      [2, 4],
+      [3, 4],
+      [4, 4], // Row 3: OOOO.
     ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
@@ -248,7 +307,13 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'R-pentomino',
     description: 'Famous methuselah, stabilizes after 1103 generations',
     dimensions: [60, 60], // Needs space to evolve
-    cells: [[30, 29], [29, 30], [30, 30], [31, 30], [29, 31]],
+    cells: [
+      [30, 29],
+      [29, 30],
+      [30, 30],
+      [31, 30],
+      [29, 31],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -278,7 +343,10 @@ const PATTERNS_2D: PatternDefinition[] = [
     name: 'Pair',
     description: 'Two adjacent cells die (not enough neighbors)',
     dimensions: [10, 10],
-    cells: [[5, 5], [5, 6]],
+    cells: [
+      [5, 5],
+      [5, 6],
+    ],
     rule: CONWAY_RULES,
     neighborhood: CONWAY_NEIGHBORHOOD,
     expected: {
@@ -300,8 +368,14 @@ const PATTERNS_3D: PatternDefinition[] = [
     description: 'Still life in 3D - each cell has 7 neighbors',
     dimensions: [10, 10, 10],
     cells: [
-      [4, 4, 4], [4, 4, 5], [4, 5, 4], [4, 5, 5],
-      [5, 4, 4], [5, 4, 5], [5, 5, 4], [5, 5, 5],
+      [4, 4, 4],
+      [4, 4, 5],
+      [4, 5, 4],
+      [4, 5, 5],
+      [5, 4, 4],
+      [5, 4, 5],
+      [5, 5, 4],
+      [5, 5, 5],
     ],
     rule: RULE_3D_445,
     neighborhood: CONWAY_NEIGHBORHOOD,
@@ -320,9 +394,12 @@ const PATTERNS_3D: PatternDefinition[] = [
     cells: [
       // Center and 6 neighbors (one in each direction)
       [5, 5, 5],
-      [4, 5, 5], [6, 5, 5],
-      [5, 4, 5], [5, 6, 5],
-      [5, 5, 4], [5, 5, 6],
+      [4, 5, 5],
+      [6, 5, 5],
+      [5, 4, 5],
+      [5, 6, 5],
+      [5, 5, 4],
+      [5, 5, 6],
     ],
     rule: RULE_3D_445,
     neighborhood: CONWAY_NEIGHBORHOOD,
@@ -398,20 +475,13 @@ function runPatternTest(
 
   // Run evolution with exact pattern initialization
   const grid = setupPattern(pattern);
-  const neighborhood = generateNeighborhood(
-    pattern.dimensions,
-    pattern.neighborhood
-  );
+  const neighborhood = generateNeighborhood(pattern.dimensions, pattern.neighborhood);
   const maxNeighbors = getMaxNeighbors(
     pattern.dimensions,
     pattern.neighborhood.type,
     pattern.neighborhood.range
   );
-  const rule = ruleFromThresholds(
-    pattern.rule.birth,
-    pattern.rule.survival,
-    maxNeighbors
-  );
+  const rule = ruleFromThresholds(pattern.rule.birth, pattern.rule.survival, maxNeighbors);
 
   // Run evolution
   const { finalGrid, metricsHistory } = evolveEnhanced(
@@ -455,32 +525,17 @@ function runPatternWithObservability(
   report: ObservabilityReport;
   gridHistory: number[]; // Population at each step
 } {
-
-
   const grid = setupPattern(pattern);
-  const neighborhood = generateNeighborhood(
-    pattern.dimensions,
-    pattern.neighborhood
-  );
+  const neighborhood = generateNeighborhood(pattern.dimensions, pattern.neighborhood);
   const maxNeighbors = getMaxNeighbors(
     pattern.dimensions,
     pattern.neighborhood.type,
     pattern.neighborhood.range
   );
-  const rule = ruleFromThresholds(
-    pattern.rule.birth,
-    pattern.rule.survival,
-    maxNeighbors
-  );
+  const rule = ruleFromThresholds(pattern.rule.birth, pattern.rule.survival, maxNeighbors);
 
   const startTime = Date.now();
-  const { finalGrid, metricsHistory } = evolveEnhanced(
-    grid,
-    rule,
-    neighborhood,
-    steps,
-    1
-  );
+  const { finalGrid, metricsHistory } = evolveEnhanced(grid, rule, neighborhood, steps, 1);
   const endTime = Date.now();
 
   const classification = multiMetricClassifier(metricsHistory);
@@ -526,10 +581,7 @@ function runPatternWithObservability(
 /**
  * Verifies a still life pattern remains unchanged.
  */
-function verifyStillLife(
-  pattern: PatternDefinition,
-  steps: number = 10
-): void {
+function verifyStillLife(pattern: PatternDefinition, steps = 10): void {
   const { result, gridHistory } = runPatternWithObservability(pattern, steps);
 
   // Population should remain constant
@@ -548,10 +600,7 @@ function verifyStillLife(
 /**
  * Verifies an oscillator pattern has correct period.
  */
-function verifyOscillator(
-  pattern: PatternDefinition,
-  steps: number = 20
-): void {
+function verifyOscillator(pattern: PatternDefinition, steps = 20): void {
   const { result, report } = runPatternWithObservability(pattern, steps);
 
   // Should be classified as oscillating or stable (period-1 oscillators are stable)
@@ -569,10 +618,7 @@ function verifyOscillator(
  * Note: Spaceships may have slightly varying population during their cycle,
  * but should return to the same population every period.
  */
-function verifySpaceship(
-  pattern: PatternDefinition,
-  steps: number = 20
-): void {
+function verifySpaceship(pattern: PatternDefinition, steps = 20): void {
   const { result, gridHistory } = runPatternWithObservability(pattern, steps);
 
   // After initial transient, population should be periodic
@@ -592,10 +638,7 @@ function verifySpaceship(
 /**
  * Verifies a pattern that goes extinct.
  */
-function verifyExtinction(
-  pattern: PatternDefinition,
-  steps: number = 10
-): void {
+function verifyExtinction(pattern: PatternDefinition, steps = 10): void {
   const { result } = runPatternWithObservability(pattern, steps);
 
   expect(result.finalPopulation).toBe(0);
@@ -610,7 +653,7 @@ function verifyExtinction(
 describe('e2e pattern tests', () => {
   describe('2D Conway patterns', () => {
     describe('still lifes', () => {
-      const stillLifes = PATTERNS_2D.filter(p => p.expected.type === 'still-life');
+      const stillLifes = PATTERNS_2D.filter((p) => p.expected.type === 'still-life');
 
       for (const pattern of stillLifes) {
         it(`${pattern.name}: should remain unchanged`, () => {
@@ -631,7 +674,7 @@ describe('e2e pattern tests', () => {
     });
 
     describe('oscillators', () => {
-      const oscillators = PATTERNS_2D.filter(p => p.expected.type === 'oscillator');
+      const oscillators = PATTERNS_2D.filter((p) => p.expected.type === 'oscillator');
 
       for (const pattern of oscillators) {
         it(`${pattern.name}: should oscillate with period ${pattern.expected.period}`, () => {
@@ -661,7 +704,7 @@ describe('e2e pattern tests', () => {
     });
 
     describe('spaceships', () => {
-      const spaceships = PATTERNS_2D.filter(p => p.expected.type === 'spaceship');
+      const spaceships = PATTERNS_2D.filter((p) => p.expected.type === 'spaceship');
 
       for (const pattern of spaceships) {
         it(`${pattern.name}: should maintain constant population`, () => {
@@ -684,7 +727,7 @@ describe('e2e pattern tests', () => {
 
     describe('extinction patterns', () => {
       const extinctionPatterns = PATTERNS_2D.filter(
-        p => p.expected.outcome === 'extinct' && p.expected.type !== 'methuselah'
+        (p) => p.expected.outcome === 'extinct' && p.expected.type !== 'methuselah'
       );
 
       for (const pattern of extinctionPatterns) {
@@ -701,7 +744,7 @@ describe('e2e pattern tests', () => {
     });
 
     describe('methuselahs', () => {
-      const methuselahs = PATTERNS_2D.filter(p => p.expected.type === 'methuselah');
+      const methuselahs = PATTERNS_2D.filter((p) => p.expected.type === 'methuselah');
 
       for (const pattern of methuselahs) {
         it(`${pattern.name}: should evolve for many generations`, () => {
@@ -722,7 +765,7 @@ describe('e2e pattern tests', () => {
 
           // Should have detected population changes
           const spikeEvents = report.events.filter(
-            e => e.type === 'population_spike_up' || e.type === 'population_spike_down'
+            (e) => e.type === 'population_spike_up' || e.type === 'population_spike_down'
           );
           expect(spikeEvents.length).toBeGreaterThan(0);
         });
@@ -738,9 +781,7 @@ describe('e2e pattern tests', () => {
         // Basic sanity checks
         expect(result.finalPopulation).toBeGreaterThanOrEqual(0);
         expect(report.summary.dimensions).toBe(pattern.dimensions.join('x'));
-        expect(report.summary.totalCells).toBe(
-          pattern.dimensions.reduce((a, b) => a * b, 1)
-        );
+        expect(report.summary.totalCells).toBe(pattern.dimensions.reduce((a, b) => a * b, 1));
       });
 
       if (pattern.expected.outcome) {
@@ -754,9 +795,9 @@ describe('e2e pattern tests', () => {
 
   describe('observability consistency', () => {
     const testPatterns = [
-      PATTERNS_2D.find(p => p.name === 'Block')!,
-      PATTERNS_2D.find(p => p.name === 'Blinker')!,
-      PATTERNS_2D.find(p => p.name === 'Glider')!,
+      PATTERNS_2D.find((p) => p.name === 'Block')!,
+      PATTERNS_2D.find((p) => p.name === 'Blinker')!,
+      PATTERNS_2D.find((p) => p.name === 'Glider')!,
     ];
 
     for (const pattern of testPatterns) {
@@ -786,9 +827,7 @@ describe('e2e pattern tests', () => {
         // Timeline should match metrics
         expect(report.metricsTimeline.length).toBe(result.metricsHistory.length);
         for (let i = 0; i < report.metricsTimeline.length; i++) {
-          expect(report.metricsTimeline[i]!.population).toBe(
-            result.metricsHistory[i]!.population
-          );
+          expect(report.metricsTimeline[i]!.population).toBe(result.metricsHistory[i]!.population);
         }
       });
     }
@@ -796,23 +835,16 @@ describe('e2e pattern tests', () => {
 
   describe('exact grid state verification', () => {
     it('Block: grid state unchanged after 10 steps', () => {
-      const pattern = PATTERNS_2D.find(p => p.name === 'Block')!;
+      const pattern = PATTERNS_2D.find((p) => p.name === 'Block')!;
 
       const initialGrid = setupPattern(pattern);
-      const neighborhood = generateNeighborhood(
-        pattern.dimensions,
-        pattern.neighborhood
-      );
+      const neighborhood = generateNeighborhood(pattern.dimensions, pattern.neighborhood);
       const maxNeighbors = getMaxNeighbors(
         pattern.dimensions,
         pattern.neighborhood.type,
         pattern.neighborhood.range
       );
-      const rule = ruleFromThresholds(
-        pattern.rule.birth,
-        pattern.rule.survival,
-        maxNeighbors
-      );
+      const rule = ruleFromThresholds(pattern.rule.birth, pattern.rule.survival, maxNeighbors);
 
       const { finalGrid } = evolveEnhanced(initialGrid, rule, neighborhood, 10, 1);
 
@@ -826,23 +858,16 @@ describe('e2e pattern tests', () => {
     });
 
     it('Blinker: alternates between horizontal and vertical', () => {
-      const pattern = PATTERNS_2D.find(p => p.name === 'Blinker')!;
+      const pattern = PATTERNS_2D.find((p) => p.name === 'Blinker')!;
 
       const initialGrid = setupPattern(pattern);
-      const neighborhood = generateNeighborhood(
-        pattern.dimensions,
-        pattern.neighborhood
-      );
+      const neighborhood = generateNeighborhood(pattern.dimensions, pattern.neighborhood);
       const maxNeighbors = getMaxNeighbors(
         pattern.dimensions,
         pattern.neighborhood.type,
         pattern.neighborhood.range
       );
-      const rule = ruleFromThresholds(
-        pattern.rule.birth,
-        pattern.rule.survival,
-        maxNeighbors
-      );
+      const rule = ruleFromThresholds(pattern.rule.birth, pattern.rule.survival, maxNeighbors);
 
       // Step 0: horizontal (original)
       // Cells: [4,4], [5,4], [6,4]
@@ -863,23 +888,16 @@ describe('e2e pattern tests', () => {
     });
 
     it('Glider: moves diagonally after 4 steps', () => {
-      const pattern = PATTERNS_2D.find(p => p.name === 'Glider')!;
+      const pattern = PATTERNS_2D.find((p) => p.name === 'Glider')!;
 
       const initialGrid = setupPattern(pattern);
-      const neighborhood = generateNeighborhood(
-        pattern.dimensions,
-        pattern.neighborhood
-      );
+      const neighborhood = generateNeighborhood(pattern.dimensions, pattern.neighborhood);
       const maxNeighbors = getMaxNeighbors(
         pattern.dimensions,
         pattern.neighborhood.type,
         pattern.neighborhood.range
       );
-      const rule = ruleFromThresholds(
-        pattern.rule.birth,
-        pattern.rule.survival,
-        maxNeighbors
-      );
+      const rule = ruleFromThresholds(pattern.rule.birth, pattern.rule.survival, maxNeighbors);
 
       // Original position: cells around [1,2], [2,3], [3,1], [3,2], [3,3]
       // After 4 steps, glider moves 1 cell diagonally (down-right in our coords)
@@ -902,7 +920,7 @@ describe('e2e pattern tests', () => {
 
   describe('classification accuracy', () => {
     it('correctly classifies all still lifes as stable', () => {
-      const stillLifes = PATTERNS_2D.filter(p => p.expected.type === 'still-life');
+      const stillLifes = PATTERNS_2D.filter((p) => p.expected.type === 'still-life');
 
       for (const pattern of stillLifes) {
         const { result } = runPatternWithObservability(pattern, 30);
@@ -912,7 +930,7 @@ describe('e2e pattern tests', () => {
     });
 
     it('correctly classifies oscillators', () => {
-      const oscillators = PATTERNS_2D.filter(p => p.expected.type === 'oscillator');
+      const oscillators = PATTERNS_2D.filter((p) => p.expected.type === 'oscillator');
 
       for (const pattern of oscillators) {
         const { result, report } = runPatternWithObservability(pattern, 50);
@@ -930,7 +948,7 @@ describe('e2e pattern tests', () => {
 
     it('correctly classifies extinction', () => {
       const extinctionPatterns = PATTERNS_2D.filter(
-        p => p.expected.outcome === 'extinct' && p.expected.type === 'other'
+        (p) => p.expected.outcome === 'extinct' && p.expected.type === 'other'
       );
 
       for (const pattern of extinctionPatterns) {

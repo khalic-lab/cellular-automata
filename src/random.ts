@@ -28,7 +28,7 @@ import type { SeededRandom } from './types.js';
  */
 export function createRandom(seed: number): SeededRandom {
   // Internal state (mutated by next() calls)
-  let state = seed >>> 0;  // Ensure unsigned 32-bit integer
+  let state = seed >>> 0; // Ensure unsigned 32-bit integer
 
   return {
     next: () => {
@@ -36,6 +36,6 @@ export function createRandom(seed: number): SeededRandom {
       state = (state * 1664525 + 1013904223) >>> 0;
       // Normalize to [0, 1)
       return state / 0x100000000;
-    }
+    },
   };
 }

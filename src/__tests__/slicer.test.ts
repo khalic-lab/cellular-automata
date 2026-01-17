@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { extractSlice, extractSlices } from '../slicer.js';
+import { describe, expect, it } from 'vitest';
 import { createGrid } from '../grid.js';
+import { extractSlice, extractSlices } from '../slicer.js';
 
 describe('slicer', () => {
   describe('extractSlice', () => {

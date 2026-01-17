@@ -88,12 +88,7 @@
  *     Section 3.1: Floyd's cycle detection algorithm
  */
 
-import type {
-  EnhancedMetrics,
-  Outcome,
-  WolframClass,
-  EnhancedOutcomeClassifier,
-} from './types.js';
+import type { EnhancedMetrics, EnhancedOutcomeClassifier, Outcome, WolframClass } from './types.js';
 
 /**
  * Result of multi-metric classification.
@@ -186,8 +181,7 @@ function analyzePopulationTrend(
   // Calculate basic statistics
   const mean = finalPopulations.reduce((a, b) => a + b, 0) / finalPopulations.length;
   const variance =
-    finalPopulations.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) /
-    finalPopulations.length;
+    finalPopulations.reduce((sum, p) => sum + (p - mean) ** 2, 0) / finalPopulations.length;
   const stdDev = Math.sqrt(variance);
   const coefficientOfVariation = mean > 0 ? stdDev / mean : 0;
 
@@ -210,7 +204,7 @@ function analyzePopulationTrend(
 
   if (trendStrength > 0.6) {
     if (increasing > decreasing) return 'growing';
-    else return 'shrinking';
+    return 'shrinking';
   }
 
   return 'stable';
@@ -235,7 +229,7 @@ function analyzeEntropyTrend(
   // Calculate statistics
   const mean = finalEntropies.reduce((a, b) => a + b, 0) / finalEntropies.length;
   const variance =
-    finalEntropies.reduce((sum, e) => sum + Math.pow(e - mean, 2), 0) / finalEntropies.length;
+    finalEntropies.reduce((sum, e) => sum + (e - mean) ** 2, 0) / finalEntropies.length;
   const stdDev = Math.sqrt(variance);
 
   // Check for trend
@@ -358,7 +352,7 @@ export const multiMetricClassifier: EnhancedOutcomeClassifier = (
   const entropies = metricsHistory.map((m) => m.entropy);
   const entropyMean = entropies.reduce((a, b) => a + b, 0) / entropies.length;
   const entropyVariance =
-    entropies.reduce((sum, e) => sum + Math.pow(e - entropyMean, 2), 0) / entropies.length;
+    entropies.reduce((sum, e) => sum + (e - entropyMean) ** 2, 0) / entropies.length;
 
   if (entropyVariance > 0.02 && entropyTrend === 'fluctuating') {
     return {
@@ -378,10 +372,8 @@ export const multiMetricClassifier: EnhancedOutcomeClassifier = (
     const earlyMetrics = metricsHistory.slice(0, Math.max(1, earlyEnd));
     const lateMetrics = metricsHistory.slice(lateStart);
 
-    const earlyAvg =
-      earlyMetrics.reduce((sum, m) => sum + m.population, 0) / earlyMetrics.length;
-    const lateAvg =
-      lateMetrics.reduce((sum, m) => sum + m.population, 0) / lateMetrics.length;
+    const earlyAvg = earlyMetrics.reduce((sum, m) => sum + m.population, 0) / earlyMetrics.length;
+    const lateAvg = lateMetrics.reduce((sum, m) => sum + m.population, 0) / lateMetrics.length;
 
     if (earlyAvg > 0 && lateAvg / earlyAvg > 1.5) {
       return {

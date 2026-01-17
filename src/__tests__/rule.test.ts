@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createRule, ruleFromThresholds, shouldCellBeAlive } from '../rule.js';
 
 describe('rule', () => {
@@ -63,11 +63,7 @@ describe('rule', () => {
 
   describe('ruleFromThresholds - relative', () => {
     it('should convert relative thresholds to absolute', () => {
-      const rule = ruleFromThresholds(
-        [{ relative: 0.5 }],
-        [{ relative: 0.25 }],
-        8
-      );
+      const rule = ruleFromThresholds([{ relative: 0.5 }], [{ relative: 0.25 }], 8);
 
       // 0.5 * 8 = 4, 0.25 * 8 = 2
       expect(rule.birth.has(4)).toBe(true);
@@ -99,11 +95,7 @@ describe('rule', () => {
     });
 
     it('should handle edge cases for relative values', () => {
-      const rule = ruleFromThresholds(
-        [{ relative: 0 }],
-        [{ relative: 1 }],
-        8
-      );
+      const rule = ruleFromThresholds([{ relative: 0 }], [{ relative: 1 }], 8);
 
       expect(rule.birth.has(0)).toBe(true);
       expect(rule.survival.has(8)).toBe(true);
@@ -194,7 +186,7 @@ describe('rule', () => {
     });
   });
 
-  describe('Conway\'s Game of Life', () => {
+  describe("Conway's Game of Life", () => {
     it('should correctly implement B3/S23', () => {
       const rule = createRule([3], [2, 3], 8);
 

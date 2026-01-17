@@ -2,25 +2,25 @@
  * Tests for terminal visualization module.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 declare function setTimeout(callback: () => void, ms: number): number;
+import { createGrid } from '../grid.js';
+import type { EnhancedMetrics } from '../types.js';
 import {
-  render2DArray,
-  renderGrid2D,
-  renderGridSlice,
+  BORDERS,
+  CHARSETS,
+  animate,
+  collectFrames,
   formatMetrics,
+  render2DArray,
   renderFrame,
   renderFramesSideBySide,
   renderFramesStacked,
+  renderGrid2D,
+  renderGridSlice,
   runWithSnapshots,
-  collectFrames,
-  animate,
-  CHARSETS,
-  BORDERS,
 } from '../visualization/index.js';
-import { createGrid } from '../grid.js';
-import type { EnhancedMetrics } from '../types.js';
 import type { VisualizationFrame } from '../visualization/types.js';
 
 describe('render2DArray', () => {
@@ -68,9 +68,7 @@ describe('render2DArray', () => {
   });
 
   it('renders with cell spacing', () => {
-    const data = [
-      [1, 0, 1],
-    ];
+    const data = [[1, 0, 1]];
     const result = render2DArray(data, {
       charset: CHARSETS.ascii,
       cellSpacing: true,
@@ -81,9 +79,7 @@ describe('render2DArray', () => {
   });
 
   it('truncates to maxWidth', () => {
-    const data = [
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    ];
+    const data = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1]];
     const result = render2DArray(data, {
       charset: CHARSETS.ascii,
       showBorder: false,
@@ -94,13 +90,7 @@ describe('render2DArray', () => {
   });
 
   it('truncates to maxHeight', () => {
-    const data = [
-      [1],
-      [1],
-      [1],
-      [1],
-      [1],
-    ];
+    const data = [[1], [1], [1], [1], [1]];
     const result = render2DArray(data, {
       charset: CHARSETS.ascii,
       showBorder: false,
@@ -322,14 +312,17 @@ describe('renderFramesStacked', () => {
 
 describe('runWithSnapshots', () => {
   it('captures initial and final frames when interval is 0', () => {
-    const result = runWithSnapshots({
-      dimensions: [5, 5],
-      neighborhood: { type: 'moore', range: 1 },
-      rule: { birth: [3], survival: [2, 3] },
-      steps: 10,
-      initialDensity: 0.3,
-      seed: 42,
-    }, 0);
+    const result = runWithSnapshots(
+      {
+        dimensions: [5, 5],
+        neighborhood: { type: 'moore', range: 1 },
+        rule: { birth: [3], survival: [2, 3] },
+        steps: 10,
+        initialDensity: 0.3,
+        seed: 42,
+      },
+      0
+    );
 
     // Should have exactly 2 frames: initial and final
     expect(result.frames).toHaveLength(2);
@@ -338,29 +331,35 @@ describe('runWithSnapshots', () => {
   });
 
   it('captures frames at specified intervals', () => {
-    const result = runWithSnapshots({
-      dimensions: [5, 5],
-      neighborhood: { type: 'moore', range: 1 },
-      rule: { birth: [3], survival: [2, 3] },
-      steps: 20,
-      initialDensity: 0.3,
-      seed: 42,
-    }, 5);
+    const result = runWithSnapshots(
+      {
+        dimensions: [5, 5],
+        neighborhood: { type: 'moore', range: 1 },
+        rule: { birth: [3], survival: [2, 3] },
+        steps: 20,
+        initialDensity: 0.3,
+        seed: 42,
+      },
+      5
+    );
 
     // Should have: step 0, 5, 10, 15, 20
     expect(result.frames).toHaveLength(5);
-    expect(result.frames.map(f => f.step)).toEqual([0, 5, 10, 15, 20]);
+    expect(result.frames.map((f) => f.step)).toEqual([0, 5, 10, 15, 20]);
   });
 
   it('includes metrics in frames', () => {
-    const result = runWithSnapshots({
-      dimensions: [5, 5],
-      neighborhood: { type: 'moore', range: 1 },
-      rule: { birth: [3], survival: [2, 3] },
-      steps: 5,
-      initialDensity: 0.3,
-      seed: 42,
-    }, 0);
+    const result = runWithSnapshots(
+      {
+        dimensions: [5, 5],
+        neighborhood: { type: 'moore', range: 1 },
+        rule: { birth: [3], survival: [2, 3] },
+        steps: 5,
+        initialDensity: 0.3,
+        seed: 42,
+      },
+      0
+    );
 
     for (const frame of result.frames) {
       expect(frame.metrics).toBeDefined();
@@ -371,14 +370,17 @@ describe('runWithSnapshots', () => {
 
   it('detects extinction', () => {
     // Very low density with survival-heavy rule tends to extinction
-    const result = runWithSnapshots({
-      dimensions: [5, 5],
-      neighborhood: { type: 'moore', range: 1 },
-      rule: { birth: [5, 6, 7, 8], survival: [] }, // Impossible to survive
-      steps: 10,
-      initialDensity: 0.1,
-      seed: 42,
-    }, 0);
+    const result = runWithSnapshots(
+      {
+        dimensions: [5, 5],
+        neighborhood: { type: 'moore', range: 1 },
+        rule: { birth: [5, 6, 7, 8], survival: [] }, // Impossible to survive
+        steps: 10,
+        initialDensity: 0.1,
+        seed: 42,
+      },
+      0
+    );
 
     expect(result.finalPopulation).toBe(0);
     expect(result.outcome).toBe('extinct');
@@ -401,9 +403,7 @@ describe('runWithSnapshots', () => {
     expect(result1.frames.length).toBe(result2.frames.length);
 
     for (let i = 0; i < result1.frames.length; i++) {
-      expect(result1.frames[i]!.metrics!.population).toBe(
-        result2.frames[i]!.metrics!.population
-      );
+      expect(result1.frames[i]!.metrics!.population).toBe(result2.frames[i]!.metrics!.population);
     }
   });
 });
@@ -456,14 +456,17 @@ describe('3D visualization', () => {
   });
 
   it('runs 3D experiment with snapshots', () => {
-    const result = runWithSnapshots({
-      dimensions: [5, 5, 5],
-      neighborhood: { type: 'moore', range: 1 },
-      rule: { birth: [5, 6], survival: [4, 5, 6] },
-      steps: 10,
-      initialDensity: 0.15,
-      seed: 42,
-    }, 5);
+    const result = runWithSnapshots(
+      {
+        dimensions: [5, 5, 5],
+        neighborhood: { type: 'moore', range: 1 },
+        rule: { birth: [5, 6], survival: [4, 5, 6] },
+        steps: 10,
+        initialDensity: 0.15,
+        seed: 42,
+      },
+      5
+    );
 
     expect(result.frames.length).toBeGreaterThanOrEqual(2);
     expect(result.frames[0]!.grid.dimensions).toEqual([5, 5, 5]);
@@ -495,7 +498,7 @@ describe('animation', () => {
 
       // Should have: step 0, 5, 10
       expect(frames.length).toBe(3);
-      expect(frames.map(f => f.step)).toEqual([0, 5, 10]);
+      expect(frames.map((f) => f.step)).toEqual([0, 5, 10]);
     });
 
     it('includes metrics in frames', () => {
@@ -528,9 +531,7 @@ describe('animation', () => {
 
       expect(frames1.length).toBe(frames2.length);
       for (let i = 0; i < frames1.length; i++) {
-        expect(frames1[i]!.metrics!.population).toBe(
-          frames2[i]!.metrics!.population
-        );
+        expect(frames1[i]!.metrics!.population).toBe(frames2[i]!.metrics!.population);
       }
     });
   });
@@ -566,13 +567,16 @@ describe('animation', () => {
     });
 
     it('completes and returns result', async () => {
-      const result = await animate({
-        ...config,
-        steps: 3,
-      }, {
-        frameDelayMs: 10,
-        clearScreen: false,
-      }).done;
+      const result = await animate(
+        {
+          ...config,
+          steps: 3,
+        },
+        {
+          frameDelayMs: 10,
+          clearScreen: false,
+        }
+      ).done;
 
       expect(result.totalSteps).toBe(3);
       expect(['active', 'extinct']).toContain(result.outcome);
@@ -583,14 +587,17 @@ describe('animation', () => {
     it('calls onFrame callback', async () => {
       const frames: number[] = [];
 
-      await animate({
-        ...config,
-        steps: 3,
-      }, {
-        frameDelayMs: 10,
-        clearScreen: false,
-        onFrame: (frame) => frames.push(frame.step),
-      }).done;
+      await animate(
+        {
+          ...config,
+          steps: 3,
+        },
+        {
+          frameDelayMs: 10,
+          clearScreen: false,
+          onFrame: (frame) => frames.push(frame.step),
+        }
+      ).done;
 
       expect(frames).toEqual([0, 1, 2, 3]);
     });
@@ -598,14 +605,19 @@ describe('animation', () => {
     it('calls onComplete callback', async () => {
       let completeCalled = false;
 
-      await animate({
-        ...config,
-        steps: 2,
-      }, {
-        frameDelayMs: 10,
-        clearScreen: false,
-        onComplete: () => { completeCalled = true; },
-      }).done;
+      await animate(
+        {
+          ...config,
+          steps: 2,
+        },
+        {
+          frameDelayMs: 10,
+          clearScreen: false,
+          onComplete: () => {
+            completeCalled = true;
+          },
+        }
+      ).done;
 
       expect(completeCalled).toBe(true);
     });

@@ -9,7 +9,7 @@
  * actual OpenTelemetry SDK integration (zero-dependency design).
  */
 
-import type { ObservabilityReport, OTelSpan } from '../types.js';
+import type { OTelSpan, ObservabilityReport } from '../types.js';
 
 /**
  * Generates a random span ID (16 hex chars).
@@ -19,7 +19,9 @@ function generateSpanId(): string {
   for (let i = 0; i < 8; i++) {
     bytes[i] = Math.floor(Math.random() * 256);
   }
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 /**
@@ -30,13 +32,18 @@ function experimentIdToTraceId(experimentId: string): string {
   let hash = 0;
   for (let i = 0; i < experimentId.length; i++) {
     const char = experimentId.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
 
   // Pad to 32 hex chars
   const hashHex = Math.abs(hash).toString(16).padStart(8, '0');
-  return experimentId.replace(/[^a-f0-9]/gi, '').padStart(24, '0').slice(0, 24) + hashHex;
+  return (
+    experimentId
+      .replace(/[^a-f0-9]/gi, '')
+      .padStart(24, '0')
+      .slice(0, 24) + hashHex
+  );
 }
 
 /**
@@ -115,8 +122,8 @@ export function formatReportToOTel(report: ObservabilityReport): OTelSpan[] {
       startTimeUnixNano: currentTime,
       endTimeUnixNano: currentTime + msToNano(report.timing.initializationMs),
       attributes: {
-        'phase': 'initialization',
-        'duration_ms': report.timing.initializationMs,
+        phase: 'initialization',
+        duration_ms: report.timing.initializationMs,
       },
     });
     currentTime += msToNano(report.timing.initializationMs);
@@ -131,10 +138,10 @@ export function formatReportToOTel(report: ObservabilityReport): OTelSpan[] {
       startTimeUnixNano: currentTime,
       endTimeUnixNano: currentTime + msToNano(report.timing.evolutionMs),
       attributes: {
-        'phase': 'evolution',
-        'duration_ms': report.timing.evolutionMs,
-        'steps': report.summary.stepsExecuted,
-        'avg_step_ms': report.timing.averageStepMs,
+        phase: 'evolution',
+        duration_ms: report.timing.evolutionMs,
+        steps: report.summary.stepsExecuted,
+        avg_step_ms: report.timing.averageStepMs,
       },
     });
 
@@ -174,11 +181,11 @@ export function formatReportToOTel(report: ObservabilityReport): OTelSpan[] {
       startTimeUnixNano: currentTime,
       endTimeUnixNano: currentTime + msToNano(report.timing.classificationMs),
       attributes: {
-        'phase': 'classification',
-        'duration_ms': report.timing.classificationMs,
-        'outcome': report.summary.outcome,
-        'wolfram_class': report.summary.wolframClass,
-        'confidence': report.classification.confidence,
+        phase: 'classification',
+        duration_ms: report.timing.classificationMs,
+        outcome: report.summary.outcome,
+        wolfram_class: report.summary.wolframClass,
+        confidence: report.classification.confidence,
       },
     });
   }
@@ -216,7 +223,7 @@ export function formatSpansToOtlpJson(spans: OTelSpan[]): string {
               name: 'observability',
               version: '1.0.0',
             },
-            spans: spans.map(span => ({
+            spans: spans.map((span) => ({
               traceId: span.traceId,
               spanId: span.spanId,
               parentSpanId: span.parentSpanId,
@@ -226,11 +233,12 @@ export function formatSpansToOtlpJson(spans: OTelSpan[]): string {
               endTimeUnixNano: span.endTimeUnixNano.toString(),
               attributes: Object.entries(span.attributes).map(([key, value]) => ({
                 key,
-                value: typeof value === 'string'
-                  ? { stringValue: value }
-                  : typeof value === 'boolean'
-                    ? { boolValue: value }
-                    : { intValue: value.toString() },
+                value:
+                  typeof value === 'string'
+                    ? { stringValue: value }
+                    : typeof value === 'boolean'
+                      ? { boolValue: value }
+                      : { intValue: value.toString() },
               })),
             })),
           },
@@ -255,15 +263,13 @@ export function formatEventsToOTelEvents(report: ObservabilityReport): Array<{
   timeUnixNano: bigint;
   attributes: Record<string, string | number | boolean>;
 }> {
-  return report.events.map(event => ({
+  return report.events.map((event) => ({
     name: event.type,
     timeUnixNano: BigInt(event.timestamp * 1_000_000), // Relative time as nano
     attributes: {
       category: event.category,
       step: event.step ?? 0,
-      ...Object.fromEntries(
-        Object.entries(event.data).map(([k, v]) => [k, String(v)])
-      ),
+      ...Object.fromEntries(Object.entries(event.data).map(([k, v]) => [k, String(v)])),
     },
   }));
 }

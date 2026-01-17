@@ -27,21 +27,21 @@
  *   arXiv:2407.06175. DOI: 10.48550/arXiv.2407.06175
  */
 
-import type {
-  ExperimentConfig,
-  ExperimentResult,
-  OutcomeClassifier,
-  Outcome,
-  Metrics,
-  EnhancedMetrics,
-  WolframClass,
-} from './types.js';
+import { type ClassificationResult, multiMetricClassifier } from './classifier.js';
 import { createGrid, initializeRandom } from './grid.js';
 import { generateNeighborhood, getMaxNeighbors } from './neighborhood.js';
+import { createRandom } from './random.js';
 import { ruleFromThresholds } from './rule.js';
 import { evolve, evolveEnhanced } from './stepper.js';
-import { createRandom } from './random.js';
-import { multiMetricClassifier, type ClassificationResult } from './classifier.js';
+import type {
+  EnhancedMetrics,
+  ExperimentConfig,
+  ExperimentResult,
+  Metrics,
+  Outcome,
+  OutcomeClassifier,
+  WolframClass,
+} from './types.js';
 
 /**
  * Default outcome classifier using hash-based cycle detection.
@@ -158,7 +158,7 @@ export function runExperiment(
     steps,
     initialDensity,
     seed = 42,
-    metricsInterval = 1
+    metricsInterval = 1,
   } = config;
 
   // Functional pipeline execution
@@ -176,20 +176,10 @@ export function runExperiment(
   const maxNeighbors = getMaxNeighbors(dimensions, type, range);
 
   // 4. Create rule from thresholds
-  const rule = ruleFromThresholds(
-    ruleConfig.birth,
-    ruleConfig.survival,
-    maxNeighbors
-  );
+  const rule = ruleFromThresholds(ruleConfig.birth, ruleConfig.survival, maxNeighbors);
 
   // 5. Evolve for N steps
-  const { finalGrid, metricsHistory } = evolve(
-    grid,
-    rule,
-    neighborhood,
-    steps,
-    metricsInterval
-  );
+  const { finalGrid, metricsHistory } = evolve(grid, rule, neighborhood, steps, metricsInterval);
 
   // 6. Classify outcome
   const outcome = classifier(metricsHistory);
@@ -199,7 +189,7 @@ export function runExperiment(
     outcome,
     finalPopulation: finalGrid.countPopulation(),
     metricsHistory,
-    config
+    config,
   };
 }
 
@@ -267,9 +257,7 @@ export interface EnhancedExperimentResult {
  * console.log(result.details.cycleDetected);  // true
  * ```
  */
-export function runExperimentEnhanced(
-  config: ExperimentConfig
-): EnhancedExperimentResult {
+export function runExperimentEnhanced(config: ExperimentConfig): EnhancedExperimentResult {
   const {
     dimensions,
     neighborhood: neighborhoodConfig,

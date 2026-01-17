@@ -61,7 +61,7 @@ export function generateNeighborhood(
   function generate(current: number[], dim: number): void {
     if (dim === ndim) {
       // Base case: complete coordinate generated
-      const isOrigin = current.every(v => v === 0);
+      const isOrigin = current.every((v) => v === 0);
       if (!isOrigin && isValidNeighbor(current, type, range)) {
         offsets.push([...current]);
       }
@@ -88,20 +88,15 @@ export function generateNeighborhood(
  * @param range - Maximum distance
  * @returns Whether offset is within valid neighborhood
  */
-function isValidNeighbor(
-  offset: number[],
-  type: NeighborhoodType,
-  range: number
-): boolean {
+function isValidNeighbor(offset: number[], type: NeighborhoodType, range: number): boolean {
   if (type === 'moore') {
     // Moore: Chebyshev distance (max absolute value)
     const chebyshev = Math.max(...offset.map(Math.abs));
     return chebyshev <= range;
-  } else {
-    // von Neumann: Manhattan distance (sum of absolute values)
-    const manhattan = offset.reduce((sum, v) => sum + Math.abs(v), 0);
-    return manhattan <= range;
   }
+  // von Neumann: Manhattan distance (sum of absolute values)
+  const manhattan = offset.reduce((sum, v) => sum + Math.abs(v), 0);
+  return manhattan <= range;
 }
 
 /**
@@ -132,35 +127,34 @@ export function getMaxNeighbors(
 
   if (type === 'moore') {
     // Moore: (2*range + 1)^ndim - 1 (exclude origin)
-    return Math.pow(2 * range + 1, ndim) - 1;
-  } else {
-    // von Neumann: 2 * sum(C(ndim, k) * range^k) for k=1 to min(range, ndim)
-    // Simplified for common case range=1: 2 * ndim
-    if (range === 1) {
-      return 2 * ndim;
-    }
-
-    // General case: count valid offsets
-    let count = 0;
-    const temp = new Array(ndim).fill(0);
-
-    function countOffsets(dim: number): void {
-      if (dim === ndim) {
-        const manhattan = temp.reduce((sum, v) => sum + Math.abs(v), 0);
-        const isOrigin = temp.every(v => v === 0);
-        if (!isOrigin && manhattan <= range) {
-          count++;
-        }
-        return;
-      }
-
-      for (let offset = -range; offset <= range; offset++) {
-        temp[dim] = offset;
-        countOffsets(dim + 1);
-      }
-    }
-
-    countOffsets(0);
-    return count;
+    return (2 * range + 1) ** ndim - 1;
   }
+  // von Neumann: 2 * sum(C(ndim, k) * range^k) for k=1 to min(range, ndim)
+  // Simplified for common case range=1: 2 * ndim
+  if (range === 1) {
+    return 2 * ndim;
+  }
+
+  // General case: count valid offsets
+  let count = 0;
+  const temp = new Array(ndim).fill(0);
+
+  function countOffsets(dim: number): void {
+    if (dim === ndim) {
+      const manhattan = temp.reduce((sum, v) => sum + Math.abs(v), 0);
+      const isOrigin = temp.every((v) => v === 0);
+      if (!isOrigin && manhattan <= range) {
+        count++;
+      }
+      return;
+    }
+
+    for (let offset = -range; offset <= range; offset++) {
+      temp[dim] = offset;
+      countOffsets(dim + 1);
+    }
+  }
+
+  countOffsets(0);
+  return count;
 }

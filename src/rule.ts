@@ -27,15 +27,11 @@ import type { Rule, ThresholdSet } from './types.js';
  * createRule([3], [2, 3], 8);
  * ```
  */
-export function createRule(
-  birth: number[],
-  survival: number[],
-  maxNeighbors: number
-): Rule {
+export function createRule(birth: number[], survival: number[], maxNeighbors: number): Rule {
   return {
     birth: new Set(birth),
     survival: new Set(survival),
-    maxNeighbors
+    maxNeighbors,
   };
 }
 
@@ -85,10 +81,7 @@ export function ruleFromThresholds(
  * @param maxNeighbors - Maximum possible neighbor count
  * @returns Array of absolute neighbor counts
  */
-function normalizeThresholds(
-  thresholds: ThresholdSet,
-  maxNeighbors: number
-): number[] {
+function normalizeThresholds(thresholds: ThresholdSet, maxNeighbors: number): number[] {
   if (thresholds.length === 0) {
     return [];
   }
@@ -134,8 +127,7 @@ export function shouldCellBeAlive(
   if (currentState === 1) {
     // Alive cell: check survival set
     return survival.has(neighborCount);
-  } else {
-    // Dead cell: check birth set
-    return birth.has(neighborCount);
   }
+  // Dead cell: check birth set
+  return birth.has(neighborCount);
 }

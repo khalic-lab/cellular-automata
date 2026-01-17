@@ -82,7 +82,7 @@ export class Grid {
    * @param dimensions - Shape of the grid (e.g., [10, 10] for 2D)
    */
   constructor(dimensions: number[]) {
-    this.dimensions = [...dimensions];  // Defensive copy
+    this.dimensions = [...dimensions]; // Defensive copy
     this.strides = computeStrides(dimensions);
     this.size = dimensions.reduce((prod, dim) => prod * dim, 1);
     this.data = new Uint8Array(this.size);
@@ -201,11 +201,7 @@ export function createGrid(dimensions: number[]): Grid {
  * initializeRandom(grid, 0.3, rng);  // 30% of cells alive
  * ```
  */
-export function initializeRandom(
-  grid: Grid,
-  density: number,
-  { next }: SeededRandom
-): void {
+export function initializeRandom(grid: Grid, density: number, { next }: SeededRandom): void {
   for (let i = 0; i < grid.size; i++) {
     grid.data[i] = next() < density ? 1 : 0;
   }

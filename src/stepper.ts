@@ -7,9 +7,9 @@
  * - Configurable metrics collection
  */
 
-import type { Rule, Metrics, EnhancedMetrics } from './types.js';
-import { Grid, computeSpatialEntropy, computeStateHash } from './grid.js';
+import { type Grid, computeSpatialEntropy, computeStateHash } from './grid.js';
 import { shouldCellBeAlive } from './rule.js';
+import type { EnhancedMetrics, Metrics, Rule } from './types.js';
 
 /**
  * Internal stepper state (not exported).
@@ -31,7 +31,7 @@ function createStepper(initialGrid: Grid): StepperState {
   return {
     currentGrid: initialGrid.clone(),
     nextGrid: initialGrid.clone(),
-    stepCount: 0
+    stepCount: 0,
   };
 }
 
@@ -45,11 +45,7 @@ function createStepper(initialGrid: Grid): StepperState {
  * @param neighborhood - Precomputed offset vectors
  * @returns Count of alive neighbors
  */
-function countNeighbors(
-  grid: Grid,
-  coord: number[],
-  neighborhood: number[][]
-): number {
+function countNeighbors(grid: Grid, coord: number[], neighborhood: number[][]): number {
   let count = 0;
 
   for (const offset of neighborhood) {
@@ -72,11 +68,7 @@ function countNeighbors(
  * @param stepNumber - Current step number
  * @returns Metrics object
  */
-function computeMetrics(
-  grid: Grid,
-  previousPopulation: number,
-  stepNumber: number
-): Metrics {
+function computeMetrics(grid: Grid, previousPopulation: number, stepNumber: number): Metrics {
   const population = grid.countPopulation();
   const delta = population - previousPopulation;
   const births = Math.max(0, delta);
@@ -88,7 +80,7 @@ function computeMetrics(
     births,
     deaths,
     delta,
-    step: stepNumber
+    step: stepNumber,
   };
 }
 
@@ -144,7 +136,7 @@ function step(
   const newState: StepperState = {
     currentGrid: nextGrid,
     nextGrid: currentGrid,
-    stepCount: stepCount + 1
+    stepCount: stepCount + 1,
   };
 
   return { state: newState, metrics };
@@ -195,7 +187,7 @@ export function evolve(
 
   return {
     finalGrid: state.currentGrid,
-    metricsHistory
+    metricsHistory,
   };
 }
 

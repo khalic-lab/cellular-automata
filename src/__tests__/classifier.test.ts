@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { multiMetricClassifier, createSimpleClassifier } from '../classifier.js';
+import { describe, expect, it } from 'vitest';
+import { createSimpleClassifier, multiMetricClassifier } from '../classifier.js';
 import type { EnhancedMetrics } from '../types.js';
 
 /**
@@ -15,7 +15,7 @@ function createMockMetrics(
     deaths: 0,
     delta: 0,
     entropy: 0.5,
-    stateHash: Math.random() * 0xffffffff >>> 0,
+    stateHash: (Math.random() * 0xffffffff) >>> 0,
     ...overrides,
   };
 }
@@ -300,7 +300,7 @@ describe('classifier', () => {
             step: i + 1,
             population: 100 + Math.sin(i) * 10,
             entropy: 0.3 + Math.random() * 0.4, // High variance entropy
-            stateHash: Math.random() * 0xffffffff >>> 0,
+            stateHash: (Math.random() * 0xffffffff) >>> 0,
           })
         );
       }

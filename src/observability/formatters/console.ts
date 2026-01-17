@@ -30,8 +30,8 @@ export function formatReportToConsole(
 ): void {
   const line = '='.repeat(60);
 
-  console.log('\n' + line);
-  console.log('  EXPERIMENT REPORT: ' + report.experimentId);
+  console.log(`\n${line}`);
+  console.log(`  EXPERIMENT REPORT: ${report.experimentId}`);
   console.log(line);
 
   // Summary section
@@ -43,7 +43,9 @@ export function formatReportToConsole(
   console.log(`   Initial population: ${report.summary.initialPopulation.toLocaleString()}`);
   console.log(`   Final population: ${report.summary.finalPopulation.toLocaleString()}`);
   const changeSign = report.summary.populationChange >= 0 ? '+' : '';
-  console.log(`   Population change: ${changeSign}${report.summary.populationChange.toLocaleString()} (${changeSign}${report.summary.populationChangePercent.toFixed(1)}%)`);
+  console.log(
+    `   Population change: ${changeSign}${report.summary.populationChange.toLocaleString()} (${changeSign}${report.summary.populationChangePercent.toFixed(1)}%)`
+  );
 
   // Timing section
   console.log('\n[TIMING]');
@@ -57,7 +59,7 @@ export function formatReportToConsole(
 
   // Step timing statistics (if available)
   if (report.timing.stepTimings && report.timing.stepTimings.length > 0) {
-    const stepMs = report.timing.stepTimings.map(s => s.durationMs);
+    const stepMs = report.timing.stepTimings.map((s) => s.durationMs);
     const minStep = Math.min(...stepMs);
     const maxStep = Math.max(...stepMs);
     const medianStep = stepMs.sort((a, b) => a - b)[Math.floor(stepMs.length / 2)]!;
@@ -109,7 +111,7 @@ export function formatReportToConsole(
   if (verbosity === 'trace' && report.metricsTimeline.length > 0) {
     console.log('\n[METRICS TIMELINE]');
     console.log('   Step   | Population | Density | Delta | Entropy');
-    console.log('   ' + '-'.repeat(52));
+    console.log(`   ${'-'.repeat(52)}`);
 
     // Show first 5, last 5, and some in between
     const timeline = report.metricsTimeline;
@@ -117,10 +119,10 @@ export function formatReportToConsole(
     const indices = showAll
       ? timeline.map((_, i) => i)
       : [
-        ...timeline.slice(0, 5).map((_, i) => i),
-        Math.floor(timeline.length / 2),
-        ...timeline.slice(-5).map((_, i) => timeline.length - 5 + i),
-      ];
+          ...timeline.slice(0, 5).map((_, i) => i),
+          Math.floor(timeline.length / 2),
+          ...timeline.slice(-5).map((_, i) => timeline.length - 5 + i),
+        ];
 
     let lastIndex = -1;
     for (const i of indices) {
@@ -137,7 +139,7 @@ export function formatReportToConsole(
     }
   }
 
-  console.log('\n' + line + '\n');
+  console.log(`\n${line}\n`);
 }
 
 /**
@@ -156,16 +158,15 @@ export function formatReportOneLine(report: ObservabilityReport): string {
  * @param report - Report with step timings
  * @param buckets - Number of histogram buckets (default: 10)
  */
-export function formatStepTimingHistogram(
-  report: ObservabilityReport,
-  buckets: number = 10
-): void {
+export function formatStepTimingHistogram(report: ObservabilityReport, buckets = 10): void {
   if (!report.timing.stepTimings || report.timing.stepTimings.length === 0) {
-    console.log('No step timing data available. Use runExperimentDeepInstrumented for per-step timing.');
+    console.log(
+      'No step timing data available. Use runExperimentDeepInstrumented for per-step timing.'
+    );
     return;
   }
 
-  const timings = report.timing.stepTimings.map(s => s.durationMs);
+  const timings = report.timing.stepTimings.map((s) => s.durationMs);
   const min = Math.min(...timings);
   const max = Math.max(...timings);
   const bucketSize = (max - min) / buckets || 1;

@@ -6,20 +6,20 @@
  */
 
 import type { Grid } from '../grid.js';
-import type { ExperimentConfig, EnhancedMetrics, Metrics, Rule } from '../types.js';
-import { extractSlice } from '../slicer.js';
 import { createGrid, initializeRandom } from '../grid.js';
 import { generateNeighborhood, getMaxNeighbors } from '../neighborhood.js';
-import { ruleFromThresholds, shouldCellBeAlive } from '../rule.js';
 import { createRandom } from '../random.js';
+import { ruleFromThresholds, shouldCellBeAlive } from '../rule.js';
+import { extractSlice } from '../slicer.js';
+import type { EnhancedMetrics, ExperimentConfig, Metrics, Rule } from '../types.js';
 import type {
   RenderOptions,
   SliceRenderOptions,
-  VisualizationFrame,
   SnapshotVisualizationOptions,
+  VisualizationFrame,
   VisualizationResult,
 } from './types.js';
-import { CHARSETS, BORDERS } from './types.js';
+import { BORDERS, CHARSETS } from './types.js';
 
 /**
  * Renders a 2D array to terminal string.
@@ -28,10 +28,7 @@ import { CHARSETS, BORDERS } from './types.js';
  * @param options - Rendering options
  * @returns Multi-line string representation
  */
-export function render2DArray(
-  data: number[][],
-  options: RenderOptions = {}
-): string {
+export function render2DArray(data: number[][], options: RenderOptions = {}): string {
   const {
     charset = CHARSETS.blocks,
     border = BORDERS.single,
@@ -54,7 +51,7 @@ export function render2DArray(
     rows = rows.slice(0, maxHeight);
   }
   if (maxWidth && cols > maxWidth) {
-    rows = rows.map(row => row.slice(0, maxWidth));
+    rows = rows.map((row) => row.slice(0, maxWidth));
     cols = maxWidth;
   }
 
@@ -62,8 +59,8 @@ export function render2DArray(
   const lines: string[] = [];
 
   // Render each row
-  const renderedRows = rows.map(row =>
-    row.map(cell => (cell === 1 ? charset.alive : charset.dead)).join(separator)
+  const renderedRows = rows.map((row) =>
+    row.map((cell) => (cell === 1 ? charset.alive : charset.dead)).join(separator)
   );
 
   // Calculate content width
@@ -71,9 +68,7 @@ export function render2DArray(
 
   if (showBorder && border !== BORDERS.none) {
     // Top border
-    lines.push(
-      border.topLeft + border.horizontal.repeat(contentWidth) + border.topRight
-    );
+    lines.push(border.topLeft + border.horizontal.repeat(contentWidth) + border.topRight);
 
     // Content rows with side borders
     for (const row of renderedRows) {
@@ -81,9 +76,7 @@ export function render2DArray(
     }
 
     // Bottom border
-    lines.push(
-      border.bottomLeft + border.horizontal.repeat(contentWidth) + border.bottomRight
-    );
+    lines.push(border.bottomLeft + border.horizontal.repeat(contentWidth) + border.bottomRight);
   } else {
     // No border, just content
     lines.push(...renderedRows);
@@ -101,9 +94,7 @@ export function render2DArray(
  */
 export function renderGrid2D(grid: Grid, options: RenderOptions = {}): string {
   if (grid.dimensions.length !== 2) {
-    throw new Error(
-      `renderGrid2D requires 2D grid, got ${grid.dimensions.length}D`
-    );
+    throw new Error(`renderGrid2D requires 2D grid, got ${grid.dimensions.length}D`);
   }
 
   // Convert grid to 2D array
@@ -128,10 +119,7 @@ export function renderGrid2D(grid: Grid, options: RenderOptions = {}): string {
  * @param options - Slice and rendering options
  * @returns Multi-line string representation
  */
-export function renderGridSlice(
-  grid: Grid,
-  options: SliceRenderOptions = {}
-): string {
+export function renderGridSlice(grid: Grid, options: SliceRenderOptions = {}): string {
   const { axis1 = 0, axis2 = 1, fixedCoords = new Map(), ...renderOptions } = options;
 
   // For 2D grids, use direct rendering
@@ -152,10 +140,7 @@ export function renderGridSlice(
  * @returns Formatted string
  */
 export function formatMetrics(metrics: Metrics | EnhancedMetrics): string {
-  const parts: string[] = [
-    `Pop: ${metrics.population}`,
-    `Density: ${metrics.density.toFixed(3)}`,
-  ];
+  const parts: string[] = [`Pop: ${metrics.population}`, `Density: ${metrics.density.toFixed(3)}`];
 
   if (metrics.delta !== undefined) {
     const sign = metrics.delta >= 0 ? '+' : '';
@@ -217,18 +202,18 @@ export function renderFramesSideBySide(
   }
 
   // Render each frame individually
-  const renderedFrames = frames.map(frame =>
+  const renderedFrames = frames.map((frame) =>
     renderFrame(frame, { ...frameOptions, showBorder: true }).split('\n')
   );
 
   // Pad all frames to same height
-  const maxHeight = Math.max(...renderedFrames.map(f => f.length));
-  const paddedFrames = renderedFrames.map(lines => {
-    const maxWidth = Math.max(...lines.map(l => l.length));
+  const maxHeight = Math.max(...renderedFrames.map((f) => f.length));
+  const paddedFrames = renderedFrames.map((lines) => {
+    const maxWidth = Math.max(...lines.map((l) => l.length));
     while (lines.length < maxHeight) {
       lines.push(' '.repeat(maxWidth));
     }
-    return lines.map(l => l.padEnd(maxWidth));
+    return lines.map((l) => l.padEnd(maxWidth));
   });
 
   // Combine frames horizontally
@@ -241,7 +226,7 @@ export function renderFramesSideBySide(
     const rowFrames = paddedFrames.slice(startIdx, endIdx);
 
     for (let lineIdx = 0; lineIdx < maxHeight; lineIdx++) {
-      const line = rowFrames.map(f => f[lineIdx] ?? '').join(gap);
+      const line = rowFrames.map((f) => f[lineIdx] ?? '').join(gap);
       result.push(line);
     }
 
@@ -269,7 +254,7 @@ export function renderFramesStacked(
     return '(no frames)';
   }
 
-  const rendered = frames.map(frame => renderFrame(frame, options));
+  const rendered = frames.map((frame) => renderFrame(frame, options));
   return rendered.join('\n\n');
 }
 
@@ -296,11 +281,7 @@ function createStepper(initialGrid: Grid): StepperState {
 /**
  * Counts alive neighbors for a cell.
  */
-function countNeighbors(
-  grid: Grid,
-  coord: number[],
-  neighborhood: number[][]
-): number {
+function countNeighbors(grid: Grid, coord: number[], neighborhood: number[][]): number {
   let count = 0;
   for (const offset of neighborhood) {
     const neighborCoord = coord.map((c, i) => c + offset[i]!);
@@ -313,11 +294,7 @@ function countNeighbors(
 /**
  * Advances grid by one generation.
  */
-function stepGrid(
-  state: StepperState,
-  rule: Rule,
-  neighborhood: number[][]
-): StepperState {
+function stepGrid(state: StepperState, rule: Rule, neighborhood: number[][]): StepperState {
   const { currentGrid, nextGrid } = state;
   const coord = new Array(currentGrid.dimensions.length).fill(0);
 
@@ -347,11 +324,7 @@ function stepGrid(
 /**
  * Computes metrics for a grid.
  */
-function computeMetrics(
-  grid: Grid,
-  previousPopulation: number,
-  step: number
-): EnhancedMetrics {
+function computeMetrics(grid: Grid, previousPopulation: number, step: number): EnhancedMetrics {
   const population = grid.countPopulation();
   const delta = population - previousPopulation;
 
@@ -390,7 +363,7 @@ function computeMetrics(
  */
 export function runWithSnapshots(
   config: ExperimentConfig,
-  snapshotInterval: number = 0
+  snapshotInterval = 0
 ): VisualizationResult {
   const {
     dimensions,
@@ -484,22 +457,23 @@ export function printSnapshots(
   const { layout = 'side-by-side', ...renderOptions } = options;
 
   // eslint-disable-next-line no-console
-  const log = (globalThis as { console?: { log: (...args: unknown[]) => void } }).console?.log ?? (() => {});
+  const log =
+    (globalThis as { console?: { log: (...args: unknown[]) => void } }).console?.log ?? (() => {});
 
-  log('\n' + '='.repeat(60));
+  log(`\n${'='.repeat(60)}`);
   log('  CELLULAR AUTOMATA VISUALIZATION');
   log('='.repeat(60));
 
   if (layout === 'side-by-side') {
-    log('\n' + renderFramesSideBySide(result.frames, renderOptions));
+    log(`\n${renderFramesSideBySide(result.frames, renderOptions)}`);
   } else {
-    log('\n' + renderFramesStacked(result.frames, renderOptions));
+    log(`\n${renderFramesStacked(result.frames, renderOptions)}`);
   }
 
-  log('\n' + '-'.repeat(40));
+  log(`\n${'-'.repeat(40)}`);
   log(`Outcome: ${result.outcome}`);
   log(`Final population: ${result.finalPopulation}`);
-  log('='.repeat(60) + '\n');
+  log(`${'='.repeat(60)}\n`);
 }
 
 /**
@@ -523,7 +497,7 @@ export function printSnapshots(
  */
 export function visualize(
   config: ExperimentConfig,
-  snapshotInterval: number = 0,
+  snapshotInterval = 0,
   options: SnapshotVisualizationOptions & { layout?: 'side-by-side' | 'stacked' } = {}
 ): VisualizationResult {
   const result = runWithSnapshots(config, snapshotInterval);

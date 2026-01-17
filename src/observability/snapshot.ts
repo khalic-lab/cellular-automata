@@ -9,8 +9,8 @@
  * Design: All functions are pure where possible, with minimal side effects.
  */
 
-import type { ExperimentConfig, Metrics, EnhancedMetrics } from '../types.js';
-import { Grid, createGrid } from '../grid.js';
+import { type Grid, createGrid } from '../grid.js';
+import type { EnhancedMetrics, ExperimentConfig, Metrics } from '../types.js';
 import type { ExperimentSnapshot } from './types.js';
 
 /**
@@ -192,7 +192,9 @@ export function snapshotSize(snapshot: ExperimentSnapshot): number {
  * @param snapshot - Snapshot with regular grid data
  * @returns New snapshot with compressed grid data
  */
-export function compressSnapshot(snapshot: ExperimentSnapshot): ExperimentSnapshot & { compressed: true; rleData: number[] } {
+export function compressSnapshot(
+  snapshot: ExperimentSnapshot
+): ExperimentSnapshot & { compressed: true; rleData: number[] } {
   const rleData: number[] = [];
   let currentValue = snapshot.gridData[0]!;
   let runLength = 1;
