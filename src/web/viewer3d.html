@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Cellular Automata</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      overflow: hidden;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #ui {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      background: rgba(30, 30, 50, 0.9);
+      padding: 20px;
+      border-radius: 12px;
+      color: #e0e0e0;
+      min-width: 240px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      z-index: 100;
+    }
+
+    #ui h1 {
+      font-size: 18px;
+      margin-bottom: 16px;
+      color: #00ff88;
+      font-weight: 600;
+    }
+
+    .control-group {
+      margin-bottom: 16px;
+    }
+
+    .control-group label {
+      display: block;
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .control-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      background: #00ff88;
+      color: #1a1a2e;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    button:hover {
+      background: #00cc6a;
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.secondary {
+      background: #3a3a5a;
+      color: #e0e0e0;
+    }
+
+    button.secondary:hover {
+      background: #4a4a6a;
+    }
+
+    select, input[type="range"] {
+      width: 100%;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #3a3a5a;
+      background: #2a2a4a;
+      color: #e0e0e0;
+      font-size: 14px;
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: #00ff88;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      height: 6px;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #00ff88;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      background: #2a2a4a;
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #00ff88;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .slider-value {
+      text-align: right;
+      font-size: 12px;
+      color: #00ff88;
+      margin-top: 4px;
+    }
+
+    #help {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(30, 30, 50, 0.8);
+      padding: 12px 16px;
+      border-radius: 8px;
+      color: #888;
+      font-size: 12px;
+      z-index: 100;
+    }
+
+    #help strong {
+      color: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <div id="ui">
+    <h1>3D Cellular Automata</h1>
+
+    <div class="control-group">
+      <label>Controls</label>
+      <div class="control-row">
+        <button id="playPause">Play</button>
+        <button id="step" class="secondary">Step</button>
+        <button id="reset" class="secondary">Reset</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>Rule Preset</label>
+      <select id="preset">
+        <optgroup label="Stable">
+          <option value="amoeba" selected>Amoeba - Stable blobs</option>
+          <option value="coral">Coral - Grows then stabilizes</option>
+          <option value="builder">Builder - Stable structures</option>
+          <option value="crystal">Crystal - Crystal growth</option>
+          <option value="slow-decay">Slow Decay - Gradual fade</option>
+        </optgroup>
+        <optgroup label="Classic">
+          <option value="4/4">4/4 - Classic 3D</option>
+          <option value="5/5">5/5 - Simple</option>
+          <option value="4/5">4/5 - Growth</option>
+          <option value="5-7/6">5-7/6 - Complex</option>
+          <option value="6-7/5-6">6-7/5-6 - Slow</option>
+          <option value="conway">Conway 2D (flat)</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>Grid Size</label>
+      <select id="gridSize">
+        <option value="10">10 x 10 x 10</option>
+        <option value="15">15 x 15 x 15</option>
+        <option value="20" selected>20 x 20 x 20</option>
+        <option value="30">30 x 30 x 30</option>
+        <option value="40">40 x 40 x 40</option>
+        <option value="50">50 x 50 x 50</option>
+        <option value="75">75 x 75 x 75</option>
+        <option value="100">100 x 100 x 100</option>
+        <option value="150">150 x 150 x 150</option>
+        <option value="200">200 x 200 x 200</option>
+        <option value="300">300 x 300 x 300</option>
+        <option value="500">500 x 500 x 500</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>Speed (ms/frame)</label>
+      <input type="range" id="speed" min="50" max="1000" value="200" step="50">
+      <div class="slider-value" id="speedValue">200ms</div>
+    </div>
+
+    <div class="control-group">
+      <label>Initial Density</label>
+      <input type="range" id="density" min="0.001" max="0.5" value="0.1" step="0.001">
+      <div class="slider-value" id="densityValue">10%</div>
+    </div>
+
+    <div class="control-group">
+      <label>Statistics</label>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-value" id="generation">0</div>
+          <div class="stat-label">Generation</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="population">0</div>
+          <div class="stat-label">Population</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="densityStat">0%</div>
+          <div class="stat-label">Density</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="stepTime">-</div>
+          <div class="stat-label">Step Time</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="computeMode">cpu</div>
+          <div class="stat-label">Compute</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="maxGen">0</div>
+          <div class="stat-label">Max Gen</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="help">
+    <strong>Mouse:</strong> Drag to rotate, Scroll to zoom, Right-drag to pan
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ============================================================
+    // INLINED CA LIBRARY
+    // ============================================================
+
+    // --- Grid Class ---
+    function computeStrides(dimensions) {
+      const strides = new Array(dimensions.length);
+      let stride = 1;
+      for (let i = dimensions.length - 1; i >= 0; i--) {
+        strides[i] = stride;
+        stride *= dimensions[i];
+      }
+      return strides;
+    }
+
+    class Grid {
+      constructor(dimensions) {
+        this.dimensions = [...dimensions];
+        this.strides = computeStrides(dimensions);
+        this.size = dimensions.reduce((prod, dim) => prod * dim, 1);
+        this.data = new Uint8Array(this.size);
+      }
+
+      index(coord) {
+        let idx = 0;
+        for (let i = 0; i < coord.length; i++) {
+          idx += coord[i] * this.strides[i];
+        }
+        return idx;
+      }
+
+      wrap(coord) {
+        const wrapped = new Array(coord.length);
+        for (let i = 0; i < coord.length; i++) {
+          wrapped[i] = ((coord[i] % this.dimensions[i]) + this.dimensions[i]) % this.dimensions[i];
+        }
+        return wrapped;
+      }
+
+      get(coord) {
+        return this.data[this.index(coord)];
+      }
+
+      set(coord, value) {
+        this.data[this.index(coord)] = value;
+      }
+
+      clone() {
+        const copy = new Grid(this.dimensions);
+        copy.data.set(this.data);
+        return copy;
+      }
+
+      countPopulation() {
+        let count = 0;
+        for (let i = 0; i < this.size; i++) {
+          count += this.data[i];
+        }
+        return count;
+      }
+    }
+
+    // --- Random ---
+    function createRandom(seed) {
+      let state = seed >>> 0;
+      return {
+        next: () => {
+          state = (state * 1664525 + 1013904223) >>> 0;
+          return state / 0x100000000;
+        }
+      };
+    }
+
+    function initializeRandom(grid, density, { next }) {
+      for (let i = 0; i < grid.size; i++) {
+        grid.data[i] = next() < density ? 1 : 0;
+      }
+    }
+
+    // --- Neighborhood ---
+    function generateNeighborhood(dimensions, { type, range = 1 }) {
+      const ndim = dimensions.length;
+      const offsets = [];
+
+      function isValidNeighbor(offset, type, range) {
+        if (type === 'moore') {
+          const chebyshev = Math.max(...offset.map(Math.abs));
+          return chebyshev <= range;
+        }
+        const manhattan = offset.reduce((sum, v) => sum + Math.abs(v), 0);
+        return manhattan <= range;
+      }
+
+      function generate(current, dim) {
+        if (dim === ndim) {
+          const isOrigin = current.every(v => v === 0);
+          if (!isOrigin && isValidNeighbor(current, type, range)) {
+            offsets.push([...current]);
+          }
+          return;
+        }
+        for (let offset = -range; offset <= range; offset++) {
+          current[dim] = offset;
+          generate(current, dim + 1);
+        }
+      }
+
+      generate(new Array(ndim).fill(0), 0);
+      return offsets;
+    }
+
+    function getMaxNeighbors(dimensions, type, range) {
+      const ndim = dimensions.length;
+      if (type === 'moore') {
+        return Math.pow(2 * range + 1, ndim) - 1;
+      }
+      if (range === 1) {
+        return 2 * ndim;
+      }
+      // General case for von Neumann
+      let count = 0;
+      const temp = new Array(ndim).fill(0);
+      function countOffsets(dim) {
+        if (dim === ndim) {
+          const manhattan = temp.reduce((sum, v) => sum + Math.abs(v), 0);
+          const isOrigin = temp.every(v => v === 0);
+          if (!isOrigin && manhattan <= range) count++;
+          return;
+        }
+        for (let offset = -range; offset <= range; offset++) {
+          temp[dim] = offset;
+          countOffsets(dim + 1);
+        }
+      }
+      countOffsets(0);
+      return count;
+    }
+
+    // --- Rule ---
+    function createRule(birth, survival, maxNeighbors) {
+      return {
+        birth: new Set(birth),
+        survival: new Set(survival),
+        maxNeighbors
+      };
+    }
+
+    function shouldCellBeAlive({ birth, survival }, currentState, neighborCount) {
+      if (currentState === 1) {
+        return survival.has(neighborCount);
+      }
+      return birth.has(neighborCount);
+    }
+
+    // --- Stepper ---
+    function countNeighbors(grid, coord, neighborhood) {
+      let count = 0;
+      for (const offset of neighborhood) {
+        const neighborCoord = coord.map((c, i) => c + offset[i]);
+        const wrapped = grid.wrap(neighborCoord);
+        count += grid.get(wrapped);
+      }
+      return count;
+    }
+
+    function stepGrid(currentGrid, nextGrid, rule, neighborhood) {
+      const coord = new Array(currentGrid.dimensions.length).fill(0);
+
+      function iterateGrid(dim) {
+        if (dim === coord.length) {
+          const currentState = currentGrid.get(coord);
+          const neighborCount = countNeighbors(currentGrid, coord, neighborhood);
+          const nextState = shouldCellBeAlive(rule, currentState, neighborCount);
+          nextGrid.set(coord, nextState ? 1 : 0);
+          return;
+        }
+        for (let i = 0; i < currentGrid.dimensions[dim]; i++) {
+          coord[dim] = i;
+          iterateGrid(dim + 1);
+        }
+      }
+
+      iterateGrid(0);
+    }
+
+    // ============================================================
+    // OPTIMIZED CA IMPLEMENTATION (Levels 1-4)
+    // ============================================================
+
+    // --- Level 1: Pre-compute neighbor index deltas ---
+    function computeNeighborIndexDeltas(neighborhood, strides) {
+      const deltas = new Int32Array(neighborhood.length);
+      for (let n = 0; n < neighborhood.length; n++) {
+        let delta = 0;
+        for (let d = 0; d < strides.length; d++) {
+          delta += neighborhood[n][d] * strides[d];
+        }
+        deltas[n] = delta;
+      }
+      return deltas;
+    }
+
+    // --- Level 2: Rule lookup tables (zero-allocation) ---
+    function createRuleLookups(birthSet, survivalSet, maxNeighbors) {
+      const birth = new Uint8Array(maxNeighbors + 1);
+      const survival = new Uint8Array(maxNeighbors + 1);
+      for (const b of birthSet) birth[b] = 1;
+      for (const s of survivalSet) survival[s] = 1;
+      return { birth, survival };
+    }
+
+    // Fast wrapping for edge cells
+    function wrapIndexFast(idx, delta, size, size2, total) {
+      const z = idx % size;
+      const y = ((idx / size) | 0) % size;
+      const x = (idx / size2) | 0;
+
+      // Extract delta components
+      const dz = delta % size;
+      const dy = ((delta / size) | 0) % size;
+      const dx = (delta / size2) | 0;
+
+      // This is complex - instead use coordinate-based wrap
+      const nz = ((z + delta % 3 - 1) % size + size) % size;
+      const ny = ((y + Math.floor(delta / 3) % 3 - 1) % size + size) % size;
+      const nx = ((x + Math.floor(delta / 9) - 1) % size + size) % size;
+
+      return nx * size2 + ny * size + nz;
+    }
+
+    // Optimized step function (Level 1+2 combined)
+    // neighborOffsets is a flat Int8Array: [ox0, oy0, oz0, ox1, oy1, oz1, ...]
+    function stepGridOptimized(currData, nextData, size, deltas, neighborOffsets, birth, survival) {
+      const size2 = size * size;
+      const total = size * size2;
+      const numNeighbors = deltas.length;
+
+      for (let idx = 0; idx < total; idx++) {
+        const z = idx % size;
+        const y = ((idx / size) | 0) % size;
+        const x = (idx / size2) | 0;
+
+        // Check if cell is on edge (needs wrapping)
+        const isEdge = x === 0 || x === size - 1 ||
+                       y === 0 || y === size - 1 ||
+                       z === 0 || z === size - 1;
+
+        let count = 0;
+        if (isEdge) {
+          // Slow path with coordinate-based wrapping using pre-computed offsets
+          for (let n = 0; n < numNeighbors; n++) {
+            const ox = neighborOffsets[n * 3];
+            const oy = neighborOffsets[n * 3 + 1];
+            const oz = neighborOffsets[n * 3 + 2];
+
+            const nx = ((x + ox) % size + size) % size;
+            const ny = ((y + oy) % size + size) % size;
+            const nz = ((z + oz) % size + size) % size;
+
+            count += currData[nx * size2 + ny * size + nz];
+          }
+        } else {
+          // Fast path - direct index addition (no wrapping needed)
+          for (let n = 0; n < numNeighbors; n++) {
+            count += currData[idx + deltas[n]];
+          }
+        }
+
+        nextData[idx] = currData[idx] ? survival[count] : birth[count];
+      }
+    }
+
+    // Convert neighborhood array to flat Int8Array of offsets
+    function createNeighborOffsets(neighborhood) {
+      const offsets = new Int8Array(neighborhood.length * 3);
+      for (let n = 0; n < neighborhood.length; n++) {
+        offsets[n * 3] = neighborhood[n][0];
+        offsets[n * 3 + 1] = neighborhood[n][1];
+        offsets[n * 3 + 2] = neighborhood[n][2];
+      }
+      return offsets;
+    }
+
+    // --- Level 3: Web Worker ---
+    const workerCode = `
+      let gridSize, size2, total;
+      let currentData, nextData;
+      let neighborDeltas, neighborOffsets;
+      let birthLookup, survivalLookup;
+
+      self.onmessage = function(e) {
+        const { type, payload } = e.data;
+        switch (type) {
+          case 'init':
+            initWorker(payload);
+            break;
+          case 'step':
+            performStep();
+            break;
+          case 'reset':
+            resetGrid(payload);
+            break;
+          case 'setRule':
+            updateRule(payload);
+            break;
+        }
+      };
+
+      function initWorker(data) {
+        gridSize = data.gridSize;
+        size2 = gridSize * gridSize;
+        total = size2 * gridSize;
+        currentData = new Uint8Array(data.gridData);
+        nextData = new Uint8Array(total);
+        neighborDeltas = new Int32Array(data.deltas);
+        neighborOffsets = new Int8Array(data.offsets);
+        birthLookup = new Uint8Array(data.birth);
+        survivalLookup = new Uint8Array(data.survival);
+        self.postMessage({ type: 'ready' });
+      }
+
+      function resetGrid(data) {
+        currentData = new Uint8Array(data.gridData);
+        nextData = new Uint8Array(total);
+        self.postMessage({ type: 'resetComplete' });
+      }
+
+      function updateRule(data) {
+        birthLookup = new Uint8Array(data.birth);
+        survivalLookup = new Uint8Array(data.survival);
+        self.postMessage({ type: 'ruleUpdated' });
+      }
+
+      function performStep() {
+        const size = gridSize;
+        const deltas = neighborDeltas;
+        const offsets = neighborOffsets;
+        const numNeighbors = deltas.length;
+        const birth = birthLookup;
+        const survival = survivalLookup;
+        const currData = currentData;
+        const nxtData = nextData;
+
+        for (let idx = 0; idx < total; idx++) {
+          const z = idx % size;
+          const y = ((idx / size) | 0) % size;
+          const x = (idx / size2) | 0;
+
+          const isEdge = x === 0 || x === size - 1 ||
+                         y === 0 || y === size - 1 ||
+                         z === 0 || z === size - 1;
+
+          let count = 0;
+          if (isEdge) {
+            // Slow path with coordinate-based wrapping
+            for (let n = 0; n < numNeighbors; n++) {
+              const ox = offsets[n * 3];
+              const oy = offsets[n * 3 + 1];
+              const oz = offsets[n * 3 + 2];
+
+              const nx = ((x + ox) % size + size) % size;
+              const ny = ((y + oy) % size + size) % size;
+              const nz = ((z + oz) % size + size) % size;
+
+              count += currData[nx * size2 + ny * size + nz];
+            }
+          } else {
+            // Fast path - direct index addition
+            for (let n = 0; n < numNeighbors; n++) {
+              count += currData[idx + deltas[n]];
+            }
+          }
+
+          nxtData[idx] = currData[idx] ? survival[count] : birth[count];
+        }
+
+        // Swap buffers
+        const temp = currentData;
+        currentData = nextData;
+        nextData = temp;
+
+        // Send result back (transfer buffer for zero-copy)
+        const buffer = currentData.buffer.slice(0);
+        self.postMessage({ type: 'stepComplete', data: new Uint8Array(buffer) }, [buffer]);
+      }
+    `;
+
+    function createCAWorker() {
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      return new Worker(URL.createObjectURL(blob));
+    }
+
+    // --- Level 4: WebGL Compute ---
+    const webglVertexShader = `#version 300 es
+      in vec2 aPosition;
+      out vec2 vTexCoord;
+      void main() {
+        vTexCoord = aPosition * 0.5 + 0.5;
+        gl_Position = vec4(aPosition, 0.0, 1.0);
+      }
+    `;
+
+    const webglFragmentShader = `#version 300 es
+      precision highp float;
+      precision highp int;
+
+      uniform sampler2D uState;
+      uniform int uGridSize;
+      uniform int uTexWidth;
+      uniform int uBirthMask;
+      uniform int uSurvivalMask;
+
+      in vec2 vTexCoord;
+      out vec4 fragColor;
+
+      // Convert 3D grid position to 2D texture coordinate
+      ivec2 gridToTex(ivec3 pos, int size, int texWidth) {
+        int linearIdx = pos.x * size * size + pos.y * size + pos.z;
+        return ivec2(linearIdx % texWidth, linearIdx / texWidth);
+      }
+
+      // Get cell state at wrapped 3D position
+      float getCell(ivec3 pos, int size, int texWidth) {
+        ivec3 wrapped = ivec3(
+          (pos.x % size + size) % size,
+          (pos.y % size + size) % size,
+          (pos.z % size + size) % size
+        );
+        ivec2 texPos = gridToTex(wrapped, size, texWidth);
+        return texelFetch(uState, texPos, 0).r;
+      }
+
+      void main() {
+        int size = uGridSize;
+        int texWidth = uTexWidth;
+
+        // Convert texture coordinate to linear index
+        ivec2 texPos = ivec2(gl_FragCoord.xy);
+        int linearIdx = texPos.y * texWidth + texPos.x;
+
+        // Check bounds
+        int total = size * size * size;
+        if (linearIdx >= total) {
+          fragColor = vec4(0.0);
+          return;
+        }
+
+        // Convert linear index to 3D position
+        int z = linearIdx % size;
+        int y = (linearIdx / size) % size;
+        int x = linearIdx / (size * size);
+        ivec3 pos = ivec3(x, y, z);
+
+        // Count neighbors (Moore neighborhood)
+        int count = 0;
+        for (int dx = -1; dx <= 1; dx++) {
+          for (int dy = -1; dy <= 1; dy++) {
+            for (int dz = -1; dz <= 1; dz++) {
+              if (dx == 0 && dy == 0 && dz == 0) continue;
+              count += int(getCell(pos + ivec3(dx, dy, dz), size, texWidth) > 0.5);
+            }
+          }
+        }
+
+        // Apply rules using bit masks
+        float current = getCell(pos, size, texWidth);
+        bool alive;
+        if (current > 0.5) {
+          alive = ((uSurvivalMask >> count) & 1) == 1;
+        } else {
+          alive = ((uBirthMask >> count) & 1) == 1;
+        }
+
+        fragColor = vec4(alive ? 1.0 : 0.0, 0.0, 0.0, 1.0);
+      }
+    `;
+
+    class WebGLCACompute {
+      constructor() {
+        this.canvas = document.createElement('canvas');
+        this.gl = this.canvas.getContext('webgl2');
+        this.initialized = false;
+        this.gridSize = 0;
+        this.texWidth = 0;
+        this.texHeight = 0;
+        this.program = null;
+        this.textures = [null, null];
+        this.framebuffers = [null, null];
+        this.currentTexIndex = 0;
+      }
+
+      init(gridSize, birthSet, survivalSet) {
+        const gl = this.gl;
+        if (!gl) return false;
+
+        this.gridSize = gridSize;
+        const total = gridSize * gridSize * gridSize;
+
+        // Query GPU texture size limit
+        const maxTexSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+        console.log(`WebGL max texture size: ${maxTexSize}`);
+
+        // Calculate texture dimensions (power of 2 width for better performance)
+        this.texWidth = Math.min(maxTexSize, Math.pow(2, Math.ceil(Math.log2(Math.sqrt(total)))));
+        this.texHeight = Math.ceil(total / this.texWidth);
+
+        // Check if texture dimensions exceed GPU limits
+        if (this.texHeight > maxTexSize) {
+          console.warn(`Grid ${gridSize}³ (${total} cells) exceeds WebGL texture limits (${maxTexSize}x${maxTexSize})`);
+          return false;
+        }
+
+        this.canvas.width = this.texWidth;
+        this.canvas.height = this.texHeight;
+        gl.viewport(0, 0, this.texWidth, this.texHeight);
+
+        // Create shader program
+        this.program = this.createProgram(webglVertexShader, webglFragmentShader);
+        if (!this.program) return false;
+
+        // Create ping-pong textures and framebuffers
+        for (let i = 0; i < 2; i++) {
+          this.textures[i] = this.createTexture();
+          this.framebuffers[i] = gl.createFramebuffer();
+          gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[i]);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.textures[i], 0);
+        }
+
+        // Create fullscreen quad
+        const quadVerts = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+        const quadBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
+
+        const posLoc = gl.getAttribLocation(this.program, 'aPosition');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+        // Set uniforms
+        gl.useProgram(this.program);
+        gl.uniform1i(gl.getUniformLocation(this.program, 'uGridSize'), gridSize);
+        gl.uniform1i(gl.getUniformLocation(this.program, 'uTexWidth'), this.texWidth);
+
+        this.setRule(birthSet, survivalSet);
+
+        this.initialized = true;
+        return true;
+      }
+
+      createProgram(vsSource, fsSource) {
+        const gl = this.gl;
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vsSource);
+        gl.compileShader(vs);
+        if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+          console.error('Vertex shader error:', gl.getShaderInfoLog(vs));
+          return null;
+        }
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fsSource);
+        gl.compileShader(fs);
+        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+          console.error('Fragment shader error:', gl.getShaderInfoLog(fs));
+          return null;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          console.error('Program link error:', gl.getProgramInfoLog(program));
+          return null;
+        }
+
+        return program;
+      }
+
+      createTexture() {
+        const gl = this.gl;
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, this.texWidth, this.texHeight, 0, gl.RED, gl.UNSIGNED_BYTE, null);
+        return tex;
+      }
+
+      setRule(birthSet, survivalSet) {
+        const gl = this.gl;
+        if (!this.program) return;
+
+        let birthMask = 0;
+        let survivalMask = 0;
+        for (const b of birthSet) birthMask |= (1 << b);
+        for (const s of survivalSet) survivalMask |= (1 << s);
+
+        gl.useProgram(this.program);
+        gl.uniform1i(gl.getUniformLocation(this.program, 'uBirthMask'), birthMask);
+        gl.uniform1i(gl.getUniformLocation(this.program, 'uSurvivalMask'), survivalMask);
+      }
+
+      uploadGrid(gridData) {
+        const gl = this.gl;
+        const total = this.gridSize * this.gridSize * this.gridSize;
+
+        // Pad data to texture size
+        const texData = new Uint8Array(this.texWidth * this.texHeight);
+        for (let i = 0; i < total; i++) {
+          texData[i] = gridData[i] * 255;
+        }
+
+        gl.bindTexture(gl.TEXTURE_2D, this.textures[this.currentTexIndex]);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.texWidth, this.texHeight, gl.RED, gl.UNSIGNED_BYTE, texData);
+      }
+
+      step() {
+        const gl = this.gl;
+        const nextTexIndex = 1 - this.currentTexIndex;
+
+        // Bind source texture and target framebuffer
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[nextTexIndex]);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.textures[this.currentTexIndex]);
+        gl.uniform1i(gl.getUniformLocation(this.program, 'uState'), 0);
+
+        // Render
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+        // Swap
+        this.currentTexIndex = nextTexIndex;
+      }
+
+      readGrid(targetData) {
+        const gl = this.gl;
+        const total = this.gridSize * this.gridSize * this.gridSize;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[this.currentTexIndex]);
+        const texData = new Uint8Array(this.texWidth * this.texHeight * 4);
+        gl.readPixels(0, 0, this.texWidth, this.texHeight, gl.RGBA, gl.UNSIGNED_BYTE, texData);
+
+        // Extract red channel
+        for (let i = 0; i < total; i++) {
+          targetData[i] = texData[i * 4] > 127 ? 1 : 0;
+        }
+      }
+
+      dispose() {
+        const gl = this.gl;
+        if (this.program) gl.deleteProgram(this.program);
+        for (let i = 0; i < 2; i++) {
+          if (this.textures[i]) gl.deleteTexture(this.textures[i]);
+          if (this.framebuffers[i]) gl.deleteFramebuffer(this.framebuffers[i]);
+        }
+        this.initialized = false;
+      }
+    }
+
+    // ============================================================
+    // RULE PRESETS
+    // ============================================================
+
+    const RULE_PRESETS = {
+      // Stable presets
+      'amoeba': { birth: [6, 7, 8], survival: [5, 6, 7, 8] },      // Very stable blobs
+      'coral': { birth: [6, 7, 8], survival: [4, 5, 6, 7, 8] },    // Grows then stabilizes
+      'builder': { birth: [4], survival: [5, 6, 7] },              // Stable structures
+      'crystal': { birth: [5, 6], survival: [5, 6, 7] },           // Crystal-like growth
+      'slow-decay': { birth: [4], survival: [3, 4, 5, 6] },        // Slow, stable decay
+      // Classic presets
+      '4/4': { birth: [4], survival: [4] },
+      '5/5': { birth: [5], survival: [5] },
+      '4/5': { birth: [4], survival: [5] },
+      '5-7/6': { birth: [5, 6, 7], survival: [6] },
+      '6-7/5-6': { birth: [6, 7], survival: [5, 6] },
+      'conway': { birth: [3], survival: [2, 3] }  // Classic 2D rules applied to 3D
+    };
+
+    // ============================================================
+    // THREE.JS VISUALIZATION
+    // ============================================================
+
+    // Scene setup
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a2e);
+
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    // Controls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 5;
+    controls.maxDistance = 200;
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(50, 50, 50);
+    scene.add(directionalLight);
+
+    const directionalLight2 = new THREE.DirectionalLight(0x00ff88, 0.3);
+    directionalLight2.position.set(-30, -30, 30);
+    scene.add(directionalLight2);
+
+    // Instanced mesh for cubes
+    let instancedMesh = null;
+    let gridHelper = null;
+    const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
+    const cubeMaterial = new THREE.MeshLambertMaterial({ color: 0x00ff88 });
+
+    // State
+    let gridSize = 20;
+    let currentGrid = null;
+    let nextGrid = null;
+    let rule = null;
+    let neighborhood = null;
+    let generation = 0;
+    let isPlaying = false;
+    let frameInterval = 200;
+    let lastFrameTime = 0;
+    let initialDensity = 0.1;
+    let maxGeneration = 0;
+
+    // Optimized CA state
+    let neighborDeltas = null;
+    let neighborOffsets = null;
+    let ruleLookups = null;
+    let caWorker = null;
+    let workerReady = false;
+    let pendingStep = false;
+    let webglCompute = null;
+    let useWebGL = false;
+    let useWorker = false;
+
+    // Compute mode: 'webgl' | 'worker' | 'cpu'
+    let computeMode = 'cpu';
+
+    // DOM elements
+    const playPauseBtn = document.getElementById('playPause');
+    const stepBtn = document.getElementById('step');
+    const resetBtn = document.getElementById('reset');
+    const presetSelect = document.getElementById('preset');
+    const gridSizeSelect = document.getElementById('gridSize');
+    const speedSlider = document.getElementById('speed');
+    const speedValue = document.getElementById('speedValue');
+    const densitySlider = document.getElementById('density');
+    const densityValue = document.getElementById('densityValue');
+    const generationEl = document.getElementById('generation');
+    const populationEl = document.getElementById('population');
+    const densityStatEl = document.getElementById('densityStat');
+    const maxGenEl = document.getElementById('maxGen');
+
+    // Initialize
+    function initSimulation() {
+      // Create grids
+      const dims = [gridSize, gridSize, gridSize];
+      currentGrid = new Grid(dims);
+      nextGrid = new Grid(dims);
+
+      // Initialize with random cells
+      const rng = createRandom(Date.now());
+      initializeRandom(currentGrid, initialDensity, rng);
+
+      // Generate neighborhood (Moore 3D)
+      neighborhood = generateNeighborhood(dims, { type: 'moore', range: 1 });
+      const maxNeighbors = getMaxNeighbors(dims, 'moore', 1);
+
+      // Get current rule preset
+      const preset = RULE_PRESETS[presetSelect.value];
+      rule = createRule(preset.birth, preset.survival, maxNeighbors);
+
+      // --- Level 1+2: Compute neighbor deltas, offsets, and rule lookups ---
+      neighborDeltas = computeNeighborIndexDeltas(neighborhood, currentGrid.strides);
+      neighborOffsets = createNeighborOffsets(neighborhood);
+      ruleLookups = createRuleLookups(rule.birth, rule.survival, maxNeighbors);
+
+      // --- Level 3+4: Initialize compute backends with fallback ---
+      initComputeBackends(preset);
+
+      // Reset counters
+      generation = 0;
+      maxGeneration = 0;
+
+      // Setup instanced mesh
+      setupInstancedMesh();
+
+      // Setup camera position
+      const offset = gridSize * 1.2;
+      camera.position.set(offset, offset * 0.8, offset);
+      camera.lookAt(0, 0, 0);
+      controls.update();
+
+      // Update visualization
+      updateMesh();
+      updateStats();
+    }
+
+    // Initialize compute backends with automatic fallback
+    function initComputeBackends(preset) {
+      // Dispose previous backends
+      if (caWorker) {
+        caWorker.terminate();
+        caWorker = null;
+        workerReady = false;
+      }
+      if (webglCompute) {
+        webglCompute.dispose();
+        webglCompute = null;
+      }
+
+      pendingStep = false;
+      const total = gridSize * gridSize * gridSize;
+
+      // Try WebGL first for large grids (Level 4)
+      if (gridSize >= 50) {
+        try {
+          webglCompute = new WebGLCACompute();
+          if (webglCompute.init(gridSize, preset.birth, preset.survival)) {
+            webglCompute.uploadGrid(currentGrid.data);
+            computeMode = 'webgl';
+            useWebGL = true;
+            useWorker = false;
+            console.log(`Using WebGL compute for ${gridSize}³ grid`);
+            return;
+          }
+        } catch (e) {
+          console.warn('WebGL compute not available:', e);
+        }
+        webglCompute = null;
+      }
+
+      // Try Web Worker for medium+ grids (Level 3)
+      if (gridSize >= 30 && typeof Worker !== 'undefined') {
+        try {
+          caWorker = createCAWorker();
+          caWorker.onmessage = handleWorkerMessage;
+          caWorker.onerror = (e) => {
+            console.warn('Worker error, falling back to CPU:', e);
+            caWorker.terminate();
+            caWorker = null;
+            workerReady = false;
+            computeMode = 'cpu';
+            useWorker = false;
+          };
+
+          // Initialize worker with current state
+          caWorker.postMessage({
+            type: 'init',
+            payload: {
+              gridSize: gridSize,
+              gridData: Array.from(currentGrid.data),
+              deltas: Array.from(neighborDeltas),
+              offsets: Array.from(neighborOffsets),
+              birth: Array.from(ruleLookups.birth),
+              survival: Array.from(ruleLookups.survival)
+            }
+          });
+
+          computeMode = 'worker';
+          useWorker = true;
+          useWebGL = false;
+          console.log(`Using Web Worker for ${gridSize}³ grid`);
+          return;
+        } catch (e) {
+          console.warn('Web Worker not available:', e);
+          caWorker = null;
+        }
+      }
+
+      // Fallback to optimized CPU (Level 1+2)
+      computeMode = 'cpu';
+      useWebGL = false;
+      useWorker = false;
+      console.log(`Using optimized CPU for ${gridSize}³ grid`);
+    }
+
+    // Handle messages from Web Worker
+    function handleWorkerMessage(e) {
+      const { type, data } = e.data;
+      switch (type) {
+        case 'ready':
+          workerReady = true;
+          break;
+        case 'stepComplete':
+          currentGrid.data.set(data);
+          pendingStep = false;
+          generation++;
+          if (generation > maxGeneration) maxGeneration = generation;
+          updateMesh();
+          updateStats();
+          break;
+        case 'resetComplete':
+        case 'ruleUpdated':
+          pendingStep = false;
+          break;
+      }
+    }
+
+    function setupInstancedMesh() {
+      // Remove old mesh (don't dispose shared geometry/material)
+      if (instancedMesh) {
+        scene.remove(instancedMesh);
+        instancedMesh.dispose();
+      }
+
+      // Remove old grid helper
+      if (gridHelper) {
+        scene.remove(gridHelper);
+        gridHelper.geometry.dispose();
+        gridHelper.material.dispose();
+      }
+
+      // Create new instanced mesh
+      const maxInstances = gridSize * gridSize * gridSize;
+      instancedMesh = new THREE.InstancedMesh(cubeGeometry, cubeMaterial, maxInstances);
+      instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      scene.add(instancedMesh);
+
+      // Create grid helper (wireframe box)
+      const halfSize = gridSize / 2;
+      const boxGeom = new THREE.BoxGeometry(gridSize, gridSize, gridSize);
+      const edgesGeom = new THREE.EdgesGeometry(boxGeom);
+      gridHelper = new THREE.LineSegments(
+        edgesGeom,
+        new THREE.LineBasicMaterial({ color: 0x3a3a5a, linewidth: 1 })
+      );
+      scene.add(gridHelper);
+      boxGeom.dispose();
+    }
+
+    function updateMesh() {
+      const matrix = new THREE.Matrix4();
+      const halfSize = gridSize / 2;
+      let instanceIndex = 0;
+
+      for (let x = 0; x < gridSize; x++) {
+        for (let y = 0; y < gridSize; y++) {
+          for (let z = 0; z < gridSize; z++) {
+            if (currentGrid.get([x, y, z]) === 1) {
+              matrix.setPosition(
+                x - halfSize + 0.5,
+                y - halfSize + 0.5,
+                z - halfSize + 0.5
+              );
+              instancedMesh.setMatrixAt(instanceIndex++, matrix);
+            }
+          }
+        }
+      }
+
+      instancedMesh.count = instanceIndex;
+      instancedMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    function stepSimulation() {
+      // Use appropriate compute backend
+      if (computeMode === 'webgl' && webglCompute && webglCompute.initialized) {
+        // WebGL compute (Level 4)
+        webglCompute.step();
+        webglCompute.readGrid(currentGrid.data);
+        generation++;
+        if (generation > maxGeneration) maxGeneration = generation;
+        updateMesh();
+        updateStats();
+      } else if (computeMode === 'worker' && caWorker && workerReady) {
+        // Web Worker (Level 3) - async
+        if (pendingStep) return; // Skip if worker is busy
+        pendingStep = true;
+        caWorker.postMessage({ type: 'step' });
+        // Result handled in handleWorkerMessage
+      } else {
+        // Optimized CPU (Level 1+2)
+        stepGridOptimized(
+          currentGrid.data,
+          nextGrid.data,
+          gridSize,
+          neighborDeltas,
+          neighborOffsets,
+          ruleLookups.birth,
+          ruleLookups.survival
+        );
+
+        // Swap grids
+        [currentGrid, nextGrid] = [nextGrid, currentGrid];
+
+        generation++;
+        if (generation > maxGeneration) maxGeneration = generation;
+        updateMesh();
+        updateStats();
+      }
+    }
+
+    function updateStats() {
+      const population = currentGrid.countPopulation();
+      const density = (population / currentGrid.size * 100).toFixed(1);
+
+      generationEl.textContent = generation;
+      populationEl.textContent = population;
+      densityStatEl.textContent = density + '%';
+      maxGenEl.textContent = maxGeneration;
+    }
+
+    // Event handlers
+    playPauseBtn.addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      playPauseBtn.textContent = isPlaying ? 'Pause' : 'Play';
+    });
+
+    stepBtn.addEventListener('click', () => {
+      if (!isPlaying) {
+        stepSimulation();
+      }
+    });
+
+    resetBtn.addEventListener('click', () => {
+      isPlaying = false;
+      playPauseBtn.textContent = 'Play';
+      initSimulation();
+    });
+
+    presetSelect.addEventListener('change', () => {
+      const maxNeighbors = getMaxNeighbors([gridSize, gridSize, gridSize], 'moore', 1);
+      const preset = RULE_PRESETS[presetSelect.value];
+      rule = createRule(preset.birth, preset.survival, maxNeighbors);
+
+      // Update optimized rule lookups
+      ruleLookups = createRuleLookups(rule.birth, rule.survival, maxNeighbors);
+
+      // Update compute backends
+      if (computeMode === 'webgl' && webglCompute) {
+        webglCompute.setRule(preset.birth, preset.survival);
+      } else if (computeMode === 'worker' && caWorker && workerReady) {
+        caWorker.postMessage({
+          type: 'setRule',
+          payload: {
+            birth: Array.from(ruleLookups.birth),
+            survival: Array.from(ruleLookups.survival)
+          }
+        });
+      }
+    });
+
+    gridSizeSelect.addEventListener('change', () => {
+      gridSize = parseInt(gridSizeSelect.value);
+      isPlaying = false;
+      playPauseBtn.textContent = 'Play';
+      initSimulation();
+    });
+
+    speedSlider.addEventListener('input', () => {
+      frameInterval = parseInt(speedSlider.value);
+      speedValue.textContent = frameInterval + 'ms';
+    });
+
+    function formatDensity(value) {
+      const pct = value * 100;
+      return pct < 1 ? pct.toFixed(1) + '%' : Math.round(pct) + '%';
+    }
+
+    densitySlider.addEventListener('change', () => {
+      initialDensity = parseFloat(densitySlider.value);
+      densityValue.textContent = formatDensity(initialDensity);
+      isPlaying = false;
+      playPauseBtn.textContent = 'Play';
+      initSimulation();
+    });
+
+    densitySlider.addEventListener('input', () => {
+      densityValue.textContent = formatDensity(parseFloat(densitySlider.value));
+    });
+
+    // Window resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Animation loop
+    function animate(currentTime) {
+      requestAnimationFrame(animate);
+
+      // Update simulation
+      if (isPlaying && currentTime - lastFrameTime >= frameInterval) {
+        stepSimulation();
+        lastFrameTime = currentTime;
+      }
+
+      // Update controls
+      controls.update();
+
+      // Render
+      renderer.render(scene, camera);
+    }
+
+    // Start
+    initSimulation();
+    animate(0);
+
+    // ============================================================
+    // TEST INTERFACE
+    // ============================================================
+    // Expose test interface for E2E testing with Playwright
+    window.__CA_TEST__ = {
+      getState: () => ({
+        gridSize,
+        generation,
+        isPlaying,
+        frameInterval,
+        initialDensity,
+        population: currentGrid?.countPopulation() ?? 0,
+        computeMode,
+        workerReady,
+        webglInitialized: webglCompute?.initialized ?? false
+      }),
+
+      getRendererInfo: () => ({
+        meshCount: instancedMesh?.count ?? 0,
+        isContextLost: renderer?.getContext()?.isContextLost() ?? true
+      }),
+
+      actions: {
+        step: () => stepBtn.click(),
+        reset: () => resetBtn.click(),
+        play: () => { if (!isPlaying) playPauseBtn.click(); },
+        pause: () => { if (isPlaying) playPauseBtn.click(); }
+      }
+    };
+  </script>
+</body>
+</html>
