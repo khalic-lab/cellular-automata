@@ -9,7 +9,7 @@
  * - Consistency between instrumented and non-instrumented runs
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { ExperimentConfig } from '../types.js';
 import { runExperiment, runExperimentEnhanced } from '../experiment.js';
 import { createGrid, initializeRandom } from '../grid.js';
@@ -31,12 +31,7 @@ import {
   validateSnapshot,
   compressSnapshot,
   decompressSnapshot,
-  // Analyzer
-  analyzeExperiment,
-  generateEventsFromMetrics,
-  buildMetricsTimeline,
   // Formatters
-  formatReportToConsole,
   formatReportOneLine,
   formatReportToJson,
   formatReportToJsonLines,
@@ -51,7 +46,6 @@ import {
   generateTraceParentHeader,
   // Types
   type InstrumentedEnhancedResult,
-  type ExperimentSnapshot,
 } from '../observability/index.js';
 
 describe('observability integration', () => {
@@ -74,7 +68,8 @@ describe('observability integration', () => {
     seed: 123,
   };
 
-  const extinctionProne: ExperimentConfig = {
+  // Reserved for future extinction tests
+  const _extinctionProne: ExperimentConfig = {
     dimensions: [10, 10],
     neighborhood: { type: 'moore', range: 1 },
     rule: { birth: [3], survival: [2, 3] },
@@ -82,6 +77,7 @@ describe('observability integration', () => {
     initialDensity: 0.05, // Very sparse, likely to die out
     seed: 999,
   };
+  void _extinctionProne; // Silence unused warning
 
   describe('full experiment lifecycle', () => {
     it('should maintain consistency between instrumented and non-instrumented runs', () => {

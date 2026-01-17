@@ -12,13 +12,12 @@
 import { describe, it, expect } from 'vitest';
 import type { ExperimentConfig, Outcome, WolframClass, EnhancedMetrics } from '../types.js';
 import { Grid, createGrid } from '../grid.js';
-import { runExperiment, runExperimentEnhanced } from '../experiment.js';
+import { evolveEnhanced } from '../stepper.js';
+import { generateNeighborhood, getMaxNeighbors } from '../neighborhood.js';
+import { ruleFromThresholds } from '../rule.js';
+import { multiMetricClassifier } from '../classifier.js';
 import {
-  runExperimentInstrumented,
-  runExperimentEnhancedInstrumented,
-  runExperimentDeepInstrumented,
-  type InstrumentedExperimentResult,
-  type InstrumentedEnhancedResult,
+  analyzeExperiment,
   type ObservabilityReport,
 } from '../observability/index.js';
 
@@ -397,19 +396,7 @@ function runPatternTest(
   // approximates our pattern. For exact pattern testing, we need
   // to use the lower-level APIs.
 
-  // Actually, let's create a wrapper that does the right thing:
-  // We'll run the experiment and verify the observability works,
-  // then do exact pattern verification separately.
-
-  const config = patternToConfig(pattern, steps);
-
-  // For exact pattern testing, we need custom initialization
-  // Let's create a helper that runs evolution with our pattern
-  const { evolveEnhanced } = require('../stepper.js');
-  const { generateNeighborhood, getMaxNeighbors } = require('../neighborhood.js');
-  const { ruleFromThresholds } = require('../rule.js');
-  const { multiMetricClassifier } = require('../classifier.js');
-
+  // Run evolution with exact pattern initialization
   const grid = setupPattern(pattern);
   const neighborhood = generateNeighborhood(
     pattern.dimensions,
@@ -466,13 +453,9 @@ function runPatternWithObservability(
 ): {
   result: PatternTestResult;
   report: ObservabilityReport;
-  gridHistory: number[][]; // Population at each step
+  gridHistory: number[]; // Population at each step
 } {
-  const { evolveEnhanced } = require('../stepper.js');
-  const { generateNeighborhood, getMaxNeighbors } = require('../neighborhood.js');
-  const { ruleFromThresholds } = require('../rule.js');
-  const { multiMetricClassifier } = require('../classifier.js');
-  const { analyzeExperiment } = require('../observability/analyzer.js');
+
 
   const grid = setupPattern(pattern);
   const neighborhood = generateNeighborhood(
@@ -569,7 +552,7 @@ function verifyOscillator(
   pattern: PatternDefinition,
   steps: number = 20
 ): void {
-  const { result, gridHistory, report } = runPatternWithObservability(pattern, steps);
+  const { result, report } = runPatternWithObservability(pattern, steps);
 
   // Should be classified as oscillating or stable (period-1 oscillators are stable)
   expect(['oscillating', 'stable']).toContain(result.outcome);
@@ -815,10 +798,6 @@ describe('e2e pattern tests', () => {
     it('Block: grid state unchanged after 10 steps', () => {
       const pattern = PATTERNS_2D.find(p => p.name === 'Block')!;
 
-      const { evolveEnhanced } = require('../stepper.js');
-      const { generateNeighborhood, getMaxNeighbors } = require('../neighborhood.js');
-      const { ruleFromThresholds } = require('../rule.js');
-
       const initialGrid = setupPattern(pattern);
       const neighborhood = generateNeighborhood(
         pattern.dimensions,
@@ -848,10 +827,6 @@ describe('e2e pattern tests', () => {
 
     it('Blinker: alternates between horizontal and vertical', () => {
       const pattern = PATTERNS_2D.find(p => p.name === 'Blinker')!;
-
-      const { evolveEnhanced } = require('../stepper.js');
-      const { generateNeighborhood, getMaxNeighbors } = require('../neighborhood.js');
-      const { ruleFromThresholds } = require('../rule.js');
 
       const initialGrid = setupPattern(pattern);
       const neighborhood = generateNeighborhood(
@@ -889,10 +864,6 @@ describe('e2e pattern tests', () => {
 
     it('Glider: moves diagonally after 4 steps', () => {
       const pattern = PATTERNS_2D.find(p => p.name === 'Glider')!;
-
-      const { evolveEnhanced } = require('../stepper.js');
-      const { generateNeighborhood, getMaxNeighbors } = require('../neighborhood.js');
-      const { ruleFromThresholds } = require('../rule.js');
 
       const initialGrid = setupPattern(pattern);
       const neighborhood = generateNeighborhood(
