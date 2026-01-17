@@ -13,7 +13,8 @@
     "test:coverage": "vitest run --coverage",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "life": "bun run src/cli/life.ts"
   },
   "keywords": [
     "cellular-automata",
