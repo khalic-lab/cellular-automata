@@ -2181,8 +2181,14 @@
     let decayMesh = null;    // Decaying cells (0 < state < maxState)
     let gridHelper = null;
     const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
+    const aliveGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85); // Separate geometry for alive
+    const decayGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85); // Separate geometry for decay
     const aliveMaterial = new THREE.MeshLambertMaterial({ color: 0x00ffdd }); // Cyan for alive
-    const decayMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, vertexColors: true }); // Gradient colors for decaying
+    const decayMaterial = new THREE.MeshLambertMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.8
+    }); // Per-instance gradient colors for decaying
 
     // State
     let gridSize = 20;
@@ -2453,13 +2459,11 @@
     }
 
     // --- Gradient Decay Colors ---
-    // Create a color for each decay state: yellow (near alive) to dark red (near dead)
+    // Pre-computed colors for decay states: yellow (near alive) to dark red (near dead)
     function getDecayColor(state, maxState) {
-      const t = state / maxState; // 0 = near dead, 1 = near alive
-      const r = 1.0;
-      const g = t * 0.8;  // Yellow to red
-      const b = 0;
-      return new THREE.Color(r, g, b);
+      // t=1 means near alive (yellow), t=0 means near dead (dark red)
+      const t = (state - 1) / Math.max(maxState - 1, 1);
+      return new THREE.Color().setRGB(1.0, t * 0.8, 0); // Red to yellow
     }
 
     // Initialize simulation
@@ -2753,18 +2757,19 @@
       const totalCells = gridSize * gridSize * gridSize;
       const maxInstances = Math.min(totalCells, MAX_RENDER_INSTANCES);
 
-      // Mesh for fully alive cells
-      aliveMesh = new THREE.InstancedMesh(cubeGeometry, aliveMaterial, maxInstances);
+      // Mesh for fully alive cells (uses separate geometry to avoid attribute bleeding)
+      aliveMesh = new THREE.InstancedMesh(aliveGeometry, aliveMaterial, maxInstances);
       aliveMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       scene.add(aliveMesh);
 
-      // Mesh for decaying cells with per-instance colors
-      decayMesh = new THREE.InstancedMesh(cubeGeometry, decayMaterial, maxInstances);
+      // Mesh for decaying cells with per-instance gradient colors
+      decayMesh = new THREE.InstancedMesh(decayGeometry, decayMaterial, maxInstances);
       decayMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      // Pre-initialize instanceColor buffer to avoid black cubes
-      decayMesh.instanceColor = new THREE.InstancedBufferAttribute(
-        new Float32Array(maxInstances * 3), 3
-      );
+      // Initialize instance colors - fill with orange as default
+      const defaultColor = new THREE.Color(1.0, 0.5, 0);
+      for (let i = 0; i < maxInstances; i++) {
+        decayMesh.setColorAt(i, defaultColor);
+      }
       decayMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
       scene.add(decayMesh);
     }
@@ -2812,14 +2817,6 @@
       let aliveIndex = 0;
       let decayIndex = 0;
 
-      // Pre-compute decay colors for gradient effect (states 1 to maxState-1)
-      const decayColors = [];
-      for (let s = 1; s <= maxState; s++) {
-        decayColors.push(getDecayColor(s, maxState));
-      }
-      // Fallback color for any edge cases
-      const fallbackColor = new THREE.Color(1, 0.5, 0);
-
       // Direct array iteration - separate alive and decaying cells
       for (let idx = 0; idx < total; idx++) {
         const state = data[idx];
@@ -2840,15 +2837,10 @@
               aliveMesh.setMatrixAt(aliveIndex++, matrix);
             }
           } else {
-            // Decaying - gradient colors based on state
+            // Decaying - gradient color based on state
             if (decayIndex < maxInstances) {
               decayMesh.setMatrixAt(decayIndex, matrix);
-              // Set per-instance color based on decay state (with bounds check)
-              const colorIdx = state - 1;
-              const color = (colorIdx >= 0 && colorIdx < decayColors.length)
-                ? decayColors[colorIdx]
-                : fallbackColor;
-              decayMesh.setColorAt(decayIndex, color);
+              decayMesh.setColorAt(decayIndex, getDecayColor(state, maxState));
               decayIndex++;
             }
           }
@@ -2860,9 +2852,7 @@
 
       decayMesh.count = decayIndex;
       decayMesh.instanceMatrix.needsUpdate = true;
-      if (decayMesh.instanceColor) {
-        decayMesh.instanceColor.needsUpdate = true;
-      }
+      decayMesh.instanceColor.needsUpdate = true;
 
       // Update grid helper position
       if (gridHelper) {
