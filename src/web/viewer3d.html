@@ -1066,6 +1066,821 @@
     }
 
     // ============================================================
+    // GPU CA SIMULATION + RAY MARCHING (Full GPU pipeline)
+    // ============================================================
+
+    // CA simulation shader - runs entirely on GPU using 3D textures
+    const gpuCAVertexShader = `#version 300 es
+      in vec2 aPosition;
+      out vec2 vUV;
+      void main() {
+        vUV = aPosition * 0.5 + 0.5;
+        gl_Position = vec4(aPosition, 0.0, 1.0);
+      }
+    `;
+
+    // CA fragment shader - processes one Z-slice at a time
+    const gpuCAFragmentShader = `#version 300 es
+      precision highp float;
+      precision highp sampler3D;
+
+      uniform sampler3D uCurrentState;
+      uniform int uGridSize;
+      uniform int uSliceZ;
+      uniform int uBirthMask;
+      uniform int uSurvivalMask;
+
+      in vec2 vUV;
+      out vec4 fragColor;
+
+      float getCell(ivec3 pos) {
+        // Wrap coordinates (toroidal)
+        ivec3 wrapped = (pos + uGridSize) % uGridSize;
+        vec3 texCoord = (vec3(wrapped) + 0.5) / float(uGridSize);
+        return texture(uCurrentState, texCoord).r;
+      }
+
+      void main() {
+        int x = int(vUV.x * float(uGridSize));
+        int y = int(vUV.y * float(uGridSize));
+        int z = uSliceZ;
+        ivec3 pos = ivec3(x, y, z);
+
+        // Count Moore neighborhood (26 neighbors)
+        int count = 0;
+        for (int dx = -1; dx <= 1; dx++) {
+          for (int dy = -1; dy <= 1; dy++) {
+            for (int dz = -1; dz <= 1; dz++) {
+              if (dx == 0 && dy == 0 && dz == 0) continue;
+              count += int(getCell(pos + ivec3(dx, dy, dz)) > 0.5);
+            }
+          }
+        }
+
+        // Apply rules using bit masks
+        float current = getCell(pos);
+        bool alive;
+        if (current > 0.5) {
+          alive = ((uSurvivalMask >> count) & 1) == 1;
+        } else {
+          alive = ((uBirthMask >> count) & 1) == 1;
+        }
+
+        fragColor = vec4(alive ? 1.0 : 0.0, 0.0, 0.0, 1.0);
+      }
+    `;
+
+    // Full GPU CA + Rendering system
+    // Uses raw WebGL for both CA compute and ray marching - ZERO CPU readback!
+    class FullGPUPipeline {
+      constructor(threeRenderer) {
+        this.threeRenderer = threeRenderer;
+        this.gl = threeRenderer.getContext();
+        this.gridSize = 0;
+        this.textures = [null, null]; // Ping-pong 3D textures for CA
+        this.framebuffer = null;
+        this.currentTex = 0;
+        this.caProgram = null;
+        this.rayMarchProgram = null;
+        this.quadVAO = null;
+        this.boxVAO = null;
+        this.birthMask = 0;
+        this.survivalMask = 0;
+        this.initialized = false;
+        this.population = 0;
+        this.populationDirty = true;
+
+        // Transform state
+        this.worldCenter = { x: 0, y: 0, z: 0 };
+      }
+
+      init(gridSize, birthSet, survivalSet) {
+        const gl = this.gl;
+        this.gridSize = gridSize;
+
+        // Check WebGL2 and 3D texture support
+        if (!gl.texImage3D) {
+          console.warn('WebGL2 3D textures not supported');
+          return false;
+        }
+
+        const max3D = gl.getParameter(gl.MAX_3D_TEXTURE_SIZE);
+        if (gridSize > max3D) {
+          console.warn(`Grid ${gridSize} exceeds max 3D texture size ${max3D}`);
+          return false;
+        }
+
+        // Create rule masks
+        this.setRule(birthSet, survivalSet);
+
+        // Create ping-pong 3D textures
+        for (let i = 0; i < 2; i++) {
+          this.textures[i] = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_3D, this.textures[i]);
+          gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, gridSize, gridSize, gridSize, 0, gl.RED, gl.UNSIGNED_BYTE, null);
+          gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+          gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+          gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+          gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+          gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.REPEAT);
+        }
+
+        // Create framebuffer for CA slice rendering
+        this.framebuffer = gl.createFramebuffer();
+
+        // Compile CA shader program
+        this.caProgram = this.createProgram(gpuCAVertexShader, gpuCAFragmentShader);
+        if (!this.caProgram) return false;
+
+        // Compile ray march shader program
+        this.rayMarchProgram = this.createProgram(fullGPURayMarchVS, fullGPURayMarchFS);
+        if (!this.rayMarchProgram) {
+          console.error('Failed to compile ray march program');
+          return false;
+        }
+        console.log('Ray march program compiled successfully');
+
+        // Create fullscreen quad VAO (for CA compute)
+        this.quadVAO = gl.createVertexArray();
+        gl.bindVertexArray(this.quadVAO);
+        const quadBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+        const caPos = gl.getAttribLocation(this.caProgram, 'aPosition');
+        gl.enableVertexAttribArray(caPos);
+        gl.vertexAttribPointer(caPos, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+
+        // Create box VAO (for ray marching)
+        this.createBoxVAO();
+
+        this.initialized = true;
+        console.log(`Full GPU pipeline initialized for ${gridSize}³`);
+        return true;
+      }
+
+      createProgram(vsSource, fsSource) {
+        const gl = this.gl;
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vsSource);
+        gl.compileShader(vs);
+        if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+          console.error('Vertex shader error:', gl.getShaderInfoLog(vs));
+          return null;
+        }
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fsSource);
+        gl.compileShader(fs);
+        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+          console.error('Fragment shader error:', gl.getShaderInfoLog(fs));
+          return null;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          console.error('Program link error:', gl.getProgramInfoLog(program));
+          return null;
+        }
+        return program;
+      }
+
+      createBoxVAO() {
+        const gl = this.gl;
+        const s = 0.5; // Half size, will be scaled by gridSize
+
+        // Box vertices (8 corners)
+        const vertices = new Float32Array([
+          -s, -s, -s,   s, -s, -s,   s,  s, -s,  -s,  s, -s, // back (0-3)
+          -s, -s,  s,   s, -s,  s,   s,  s,  s,  -s,  s,  s, // front (4-7)
+        ]);
+
+        // Box indices (12 triangles, 36 indices) - counter-clockwise winding when viewed from outside
+        const indices = new Uint16Array([
+          // Back face (z = -0.5)
+          0, 2, 1, 0, 3, 2,
+          // Front face (z = +0.5)
+          4, 5, 6, 4, 6, 7,
+          // Bottom face (y = -0.5)
+          0, 1, 5, 0, 5, 4,
+          // Top face (y = +0.5)
+          3, 6, 2, 3, 7, 6,
+          // Left face (x = -0.5)
+          0, 4, 7, 0, 7, 3,
+          // Right face (x = +0.5)
+          1, 2, 6, 1, 6, 5,
+        ]);
+
+        this.boxVAO = gl.createVertexArray();
+        gl.bindVertexArray(this.boxVAO);
+
+        const vbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+        const ibo = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+        const posLoc = gl.getAttribLocation(this.rayMarchProgram, 'aPosition');
+        if (posLoc === -1) {
+          console.error('aPosition attribute not found in ray march shader');
+        }
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindVertexArray(null);
+        this.boxIndexCount = indices.length;
+
+        console.log('Box VAO created with', this.boxIndexCount, 'indices');
+      }
+
+      uploadInitialState(gridData) {
+        const gl = this.gl;
+        // Convert 0/1 to 0/255 for texture
+        const texData = new Uint8Array(gridData.length);
+        for (let i = 0; i < gridData.length; i++) {
+          texData[i] = gridData[i] * 255;
+        }
+        gl.bindTexture(gl.TEXTURE_3D, this.textures[this.currentTex]);
+        gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, this.gridSize, this.gridSize, this.gridSize, gl.RED, gl.UNSIGNED_BYTE, texData);
+        this.populationDirty = true;
+      }
+
+      setRule(birthSet, survivalSet) {
+        this.birthMask = 0;
+        this.survivalMask = 0;
+        for (const b of birthSet) this.birthMask |= (1 << b);
+        for (const s of survivalSet) this.survivalMask |= (1 << s);
+      }
+
+      step() {
+        const gl = this.gl;
+        const size = this.gridSize;
+        const nextTex = 1 - this.currentTex;
+
+        // Save WebGL state
+        const prevFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        const prevViewport = gl.getParameter(gl.VIEWPORT);
+        const prevProgram = gl.getParameter(gl.CURRENT_PROGRAM);
+
+        // Setup for CA computation
+        gl.useProgram(this.caProgram);
+        gl.bindVertexArray(this.quadVAO);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+        gl.viewport(0, 0, size, size);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.CULL_FACE);
+
+        // Bind source texture
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, this.textures[this.currentTex]);
+        gl.uniform1i(gl.getUniformLocation(this.caProgram, 'uCurrentState'), 0);
+        gl.uniform1i(gl.getUniformLocation(this.caProgram, 'uGridSize'), size);
+        gl.uniform1i(gl.getUniformLocation(this.caProgram, 'uBirthMask'), this.birthMask);
+        gl.uniform1i(gl.getUniformLocation(this.caProgram, 'uSurvivalMask'), this.survivalMask);
+
+        // Render each Z-slice to the output texture
+        const sliceLoc = gl.getUniformLocation(this.caProgram, 'uSliceZ');
+        for (let z = 0; z < size; z++) {
+          gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.textures[nextTex], 0, z);
+          gl.uniform1i(sliceLoc, z);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        }
+
+        // Swap textures
+        this.currentTex = nextTex;
+        this.populationDirty = true;
+
+        // Restore WebGL state
+        gl.bindFramebuffer(gl.FRAMEBUFFER, prevFramebuffer);
+        gl.viewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+        gl.useProgram(prevProgram);
+        gl.bindVertexArray(null);
+        gl.enable(gl.DEPTH_TEST);
+      }
+
+      render(camera) {
+        const gl = this.gl;
+        const size = this.gridSize;
+
+        // Get camera matrices
+        camera.updateMatrixWorld();
+        const viewMatrix = camera.matrixWorldInverse;
+        const projMatrix = camera.projectionMatrix;
+
+        // Calculate model matrix: translate then scale (T * S)
+        // Box vertices are -0.5 to 0.5, scaled by size to get -size/2 to size/2
+        const modelMatrix = new THREE.Matrix4();
+        modelMatrix.compose(
+          new THREE.Vector3(this.worldCenter.x, this.worldCenter.y, this.worldCenter.z),
+          new THREE.Quaternion(),
+          new THREE.Vector3(size, size, size)
+        );
+
+        const modelViewMatrix = new THREE.Matrix4();
+        modelViewMatrix.multiplyMatrices(viewMatrix, modelMatrix);
+
+        const mvpMatrix = new THREE.Matrix4();
+        mvpMatrix.multiplyMatrices(projMatrix, modelViewMatrix);
+
+        const modelMatrixInverse = new THREE.Matrix4();
+        modelMatrixInverse.copy(modelMatrix).invert();
+
+        // Camera position in world space
+        const camWorldPos = new THREE.Vector3();
+        camera.getWorldPosition(camWorldPos);
+
+        // Camera position in model/local space
+        const camLocalPos = camWorldPos.clone().applyMatrix4(modelMatrixInverse);
+
+        // Save ALL WebGL state that we'll modify
+        const prevVAO = gl.getParameter(gl.VERTEX_ARRAY_BINDING);
+        const prevProgram = gl.getParameter(gl.CURRENT_PROGRAM);
+        const prevActiveTexture = gl.getParameter(gl.ACTIVE_TEXTURE);
+        const prevTexture3D = gl.getParameter(gl.TEXTURE_BINDING_3D);
+        const prevCullFace = gl.getParameter(gl.CULL_FACE);
+        const prevCullFaceMode = gl.getParameter(gl.CULL_FACE_MODE);
+        const prevDepthMask = gl.getParameter(gl.DEPTH_WRITEMASK);
+        const prevDepthTest = gl.getParameter(gl.DEPTH_TEST);
+        const prevDepthFunc = gl.getParameter(gl.DEPTH_FUNC);
+        const prevBlend = gl.getParameter(gl.BLEND);
+
+        // Setup ray march rendering
+        gl.useProgram(this.rayMarchProgram);
+        gl.bindVertexArray(this.boxVAO);
+
+        // Set render state for volumetric rendering
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.depthMask(false); // Don't write depth - hits are inside the box
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.FRONT); // Render back faces for volume ray marching
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        // Bind volume texture
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, this.textures[this.currentTex]);
+
+        // Set uniforms
+        const prog = this.rayMarchProgram;
+        gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'uMVPMatrix'), false, mvpMatrix.elements);
+        gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'uModelMatrix'), false, modelMatrix.elements);
+        gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'uModelMatrixInverse'), false, modelMatrixInverse.elements);
+        gl.uniform3f(gl.getUniformLocation(prog, 'uCameraPos'), camWorldPos.x, camWorldPos.y, camWorldPos.z);
+        gl.uniform3f(gl.getUniformLocation(prog, 'uCameraLocalPos'), camLocalPos.x, camLocalPos.y, camLocalPos.z);
+        gl.uniform1i(gl.getUniformLocation(prog, 'uVolume'), 0);
+        gl.uniform1f(gl.getUniformLocation(prog, 'uGridSize'), size);
+
+        // Step scale: larger grids need bigger steps
+        const stepScale = Math.max(1.0, Math.floor(size / 100));
+        gl.uniform1f(gl.getUniformLocation(prog, 'uStepScale'), stepScale);
+
+        // Draw
+        gl.drawElements(gl.TRIANGLES, this.boxIndexCount, gl.UNSIGNED_SHORT, 0);
+
+        // Restore ALL WebGL state for Three.js
+        gl.bindVertexArray(prevVAO);
+        gl.useProgram(prevProgram);
+        gl.activeTexture(prevActiveTexture);
+        gl.bindTexture(gl.TEXTURE_3D, prevTexture3D);
+        gl.depthMask(prevDepthMask);
+        if (prevCullFace) {
+          gl.enable(gl.CULL_FACE);
+        } else {
+          gl.disable(gl.CULL_FACE);
+        }
+        gl.cullFace(prevCullFaceMode);
+        if (prevDepthTest) {
+          gl.enable(gl.DEPTH_TEST);
+        } else {
+          gl.disable(gl.DEPTH_TEST);
+        }
+        gl.depthFunc(prevDepthFunc);
+        if (prevBlend) {
+          gl.enable(gl.BLEND);
+        } else {
+          gl.disable(gl.BLEND);
+        }
+      }
+
+      setPosition(x, y, z) {
+        this.worldCenter.x = x;
+        this.worldCenter.y = y;
+        this.worldCenter.z = z;
+      }
+
+      // Get population - expensive, only called when needed
+      getPopulation() {
+        if (!this.populationDirty) return this.population;
+
+        const gl = this.gl;
+        const size = this.gridSize;
+        const total = size * size * size;
+        const data = new Uint8Array(total);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+        for (let z = 0; z < size; z++) {
+          gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.textures[this.currentTex], 0, z);
+          gl.readPixels(0, 0, size, size, gl.RED, gl.UNSIGNED_BYTE, data, z * size * size);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        let count = 0;
+        for (let i = 0; i < total; i++) count += data[i] > 127 ? 1 : 0;
+        this.population = count;
+        this.populationDirty = false;
+        return count;
+      }
+
+      // Download grid data to CPU (for history/timeline)
+      downloadGrid(targetData) {
+        const gl = this.gl;
+        const size = this.gridSize;
+        const total = size * size * size;
+        const texData = new Uint8Array(total);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+        for (let z = 0; z < size; z++) {
+          gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, this.textures[this.currentTex], 0, z);
+          gl.readPixels(0, 0, size, size, gl.RED, gl.UNSIGNED_BYTE, texData, z * size * size);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        // Convert 0/255 back to 0/1
+        for (let i = 0; i < total; i++) {
+          targetData[i] = texData[i] > 127 ? 1 : 0;
+        }
+      }
+
+      dispose() {
+        const gl = this.gl;
+        for (let i = 0; i < 2; i++) {
+          if (this.textures[i]) gl.deleteTexture(this.textures[i]);
+        }
+        if (this.framebuffer) gl.deleteFramebuffer(this.framebuffer);
+        if (this.caProgram) gl.deleteProgram(this.caProgram);
+        if (this.rayMarchProgram) gl.deleteProgram(this.rayMarchProgram);
+        this.initialized = false;
+      }
+    }
+
+    // Raw WebGL ray march vertex shader
+    const fullGPURayMarchVS = `#version 300 es
+      in vec3 aPosition;
+
+      uniform mat4 uMVPMatrix;
+      uniform mat4 uModelMatrix;
+
+      out vec3 vWorldPos;
+      out vec3 vLocalPos;
+
+      void main() {
+        vLocalPos = aPosition; // -0.5 to 0.5
+        vec4 worldPos = uModelMatrix * vec4(aPosition, 1.0);
+        vWorldPos = worldPos.xyz;
+        gl_Position = uMVPMatrix * vec4(aPosition, 1.0);
+      }
+    `;
+
+    // Raw WebGL ray march fragment shader with volumetric rendering
+    const fullGPURayMarchFS = `#version 300 es
+      precision highp float;
+      precision highp sampler3D;
+
+      uniform sampler3D uVolume;
+      uniform float uGridSize;
+      uniform float uStepScale;
+      uniform vec3 uCameraPos;
+      uniform vec3 uCameraLocalPos;
+      uniform mat4 uModelMatrixInverse;
+
+      in vec3 vWorldPos;
+      in vec3 vLocalPos;
+
+      out vec4 fragColor;
+
+      // Light direction (from top-right-front in local space)
+      const vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
+      const vec3 lightColor = vec3(1.0, 0.95, 0.9);
+      const vec3 ambientColor = vec3(0.2, 0.22, 0.28);
+      const vec3 cellColor = vec3(0.0, 1.0, 0.53); // Green
+
+      vec2 intersectBox(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) {
+        vec3 invDir = 1.0 / rayDir;
+        vec3 t1 = (boxMin - rayOrigin) * invDir;
+        vec3 t2 = (boxMax - rayOrigin) * invDir;
+        vec3 tMin = min(t1, t2);
+        vec3 tMax = max(t1, t2);
+        return vec2(max(max(tMin.x, tMin.y), tMin.z), min(min(tMax.x, tMax.y), tMax.z));
+      }
+
+      float sampleVolume(vec3 localPos) {
+        vec3 texCoord = localPos + 0.5;
+        return texture(uVolume, texCoord).r;
+      }
+
+      // Estimate normal using central differences (gradient)
+      vec3 estimateNormal(vec3 pos, float eps) {
+        float dx = sampleVolume(pos + vec3(eps, 0, 0)) - sampleVolume(pos - vec3(eps, 0, 0));
+        float dy = sampleVolume(pos + vec3(0, eps, 0)) - sampleVolume(pos - vec3(0, eps, 0));
+        float dz = sampleVolume(pos + vec3(0, 0, eps)) - sampleVolume(pos - vec3(0, 0, eps));
+        vec3 n = vec3(-dx, -dy, -dz);
+        return length(n) > 0.001 ? normalize(n) : vec3(0, 1, 0);
+      }
+
+      void main() {
+        vec3 rayDir = normalize(vLocalPos - uCameraLocalPos);
+        vec3 boxMin = vec3(-0.5);
+        vec3 boxMax = vec3(0.5);
+
+        vec2 tHit = intersectBox(uCameraLocalPos, rayDir, boxMin, boxMax);
+        if (tHit.x > tHit.y || tHit.y < 0.0) discard;
+
+        float t = max(tHit.x, 0.0) + 0.001;
+        float stepSize = uStepScale / uGridSize;
+        float eps = 1.0 / uGridSize;
+
+        // Volumetric accumulation
+        vec3 accumulatedColor = vec3(0.0);
+        float accumulatedAlpha = 0.0;
+        float transmittance = 1.0;
+
+        // Opacity per cell hit (lower = more transparent, see more depth)
+        float cellOpacity = 0.15;
+
+        int hitCount = 0;
+        const int maxHits = 12; // Limit hits for performance
+
+        // Ray march through volume with accumulation
+        for (int i = 0; i < 512; i++) {
+          if (t > tHit.y || transmittance < 0.01) break;
+
+          vec3 pos = uCameraLocalPos + rayDir * t;
+          float density = sampleVolume(pos);
+
+          if (density > 0.5) {
+            hitCount++;
+
+            // Estimate surface normal
+            vec3 normal = estimateNormal(pos, eps);
+
+            // Diffuse lighting
+            float diffuse = max(dot(normal, lightDir), 0.0) * 0.6 + 0.4;
+
+            // Depth-based darkening
+            float depth = (t - tHit.x) / (tHit.y - tHit.x);
+            float depthShade = 1.0 - depth * 0.5;
+
+            // Rim lighting
+            float rim = pow(1.0 - abs(dot(normal, -rayDir)), 2.0) * 0.2;
+
+            // Cell color with lighting
+            vec3 litColor = cellColor * (ambientColor + lightColor * diffuse) * depthShade;
+            litColor += rim * cellColor;
+
+            // Specular
+            vec3 halfVec = normalize(lightDir - rayDir);
+            float spec = pow(max(dot(normal, halfVec), 0.0), 16.0);
+            litColor += lightColor * spec * 0.2;
+
+            // Accumulate with front-to-back compositing
+            float alpha = cellOpacity * transmittance;
+            accumulatedColor += litColor * alpha;
+            accumulatedAlpha += alpha;
+            transmittance *= (1.0 - cellOpacity);
+
+            // Skip through this cell to find the next surface
+            // March forward until we exit this cell
+            for (int j = 0; j < 8; j++) {
+              t += stepSize;
+              if (sampleVolume(uCameraLocalPos + rayDir * t) < 0.5) break;
+            }
+
+            if (hitCount >= maxHits) break;
+          }
+          t += stepSize;
+        }
+
+        if (accumulatedAlpha < 0.01) discard;
+
+        // Normalize and apply gamma
+        vec3 finalColor = accumulatedColor / max(accumulatedAlpha, 0.01);
+        finalColor = pow(finalColor, vec3(1.0 / 2.2));
+
+        fragColor = vec4(finalColor, min(accumulatedAlpha * 2.0, 1.0));
+      }
+    `;
+
+    // Ray marching vertex shader - transform to proper coordinate spaces
+    const rayMarchVertexShader = `
+      uniform mat4 uWorldMatrix;
+      uniform mat4 uWorldMatrixInverse;
+
+      varying vec3 vLocalPos;
+      varying vec3 vLocalCamPos;
+
+      void main() {
+        // Pass local-space position to fragment shader
+        vLocalPos = position;
+
+        // Transform camera position to local/model space
+        vLocalCamPos = (uWorldMatrixInverse * vec4(cameraPosition, 1.0)).xyz;
+
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+
+    // Ray marching fragment shader - first-hit rendering with configurable quality
+    const rayMarchFragmentShader = `
+      precision highp float;
+      precision highp sampler3D;
+
+      uniform sampler3D uVolume;
+      uniform vec3 uVolumeSize;
+      uniform vec3 uColor;
+      uniform float uStepScale; // 1.0 = every voxel, 2.0 = every other, etc.
+
+      varying vec3 vLocalPos;
+      varying vec3 vLocalCamPos;
+
+      // Ray-AABB intersection
+      vec2 intersectBox(vec3 rayOrigin, vec3 rayDir, vec3 boxMin, vec3 boxMax) {
+        vec3 invDir = 1.0 / rayDir;
+        vec3 t1 = (boxMin - rayOrigin) * invDir;
+        vec3 t2 = (boxMax - rayOrigin) * invDir;
+        vec3 tMin = min(t1, t2);
+        vec3 tMax = max(t1, t2);
+        return vec2(max(max(tMin.x, tMin.y), tMin.z), min(min(tMax.x, tMax.y), tMax.z));
+      }
+
+      // Sample volume
+      float sampleVolume(vec3 localPos) {
+        vec3 texCoord = (localPos / uVolumeSize) + 0.5;
+        return texture(uVolume, texCoord).r;
+      }
+
+      void main() {
+        vec3 rayDir = normalize(vLocalPos - vLocalCamPos);
+        vec3 boxMin = uVolumeSize * -0.5;
+        vec3 boxMax = uVolumeSize * 0.5;
+
+        vec2 tHit = intersectBox(vLocalCamPos, rayDir, boxMin, boxMax);
+        if (tHit.x > tHit.y || tHit.y < 0.0) discard;
+
+        float t = max(tHit.x, 0.0) + 0.01;
+        float stepSize = uStepScale; // Configurable step size
+
+        // Limit iterations based on step size
+        for (int i = 0; i < 512; i++) {
+          if (t > tHit.y) break;
+
+          vec3 pos = vLocalCamPos + rayDir * t;
+          if (sampleVolume(pos) > 0.5) {
+            // Simple depth-based shading (no expensive normal calc)
+            float depth = (t - tHit.x) / (tHit.y - tHit.x);
+            float shade = 1.0 - depth * 0.4;
+            gl_FragColor = vec4(uColor * shade, 1.0);
+            return;
+          }
+          t += stepSize;
+        }
+        discard;
+      }
+    `;
+
+    // 3D Texture-based volume renderer
+    class VolumeCARenderer {
+      constructor(threeRenderer) {
+        this.renderer = threeRenderer;
+        this.gl = threeRenderer.getContext();
+        this.gridSize = 0;
+        this.volumeTexture = null;
+        this.volumeMesh = null;
+        this.material = null;
+        this.initialized = false;
+      }
+
+      init(gridSize, scene) {
+        this.gridSize = gridSize;
+        this.scene = scene;
+
+        // Check for WebGL2 and 3D texture support
+        if (!this.gl.texImage3D) {
+          console.warn('WebGL2 3D textures not supported');
+          return false;
+        }
+
+        // Check max 3D texture size
+        const max3DSize = this.gl.getParameter(this.gl.MAX_3D_TEXTURE_SIZE);
+        console.log(`Max 3D texture size: ${max3DSize}`);
+
+        if (gridSize > max3DSize) {
+          console.warn(`Grid size ${gridSize} exceeds max 3D texture size ${max3DSize}`);
+          return false;
+        }
+
+        // Create 3D texture
+        this.createVolumeTexture();
+
+        // Create box geometry (volume bounds)
+        const geometry = new THREE.BoxGeometry(gridSize, gridSize, gridSize);
+
+        // Step scale: larger grids need bigger steps to stay fast
+        // 100³ = 1.0, 200³ = 2.0, 500³ = 4.0
+        const stepScale = Math.max(1.0, Math.floor(gridSize / 100));
+
+        // Create ray march material
+        this.material = new THREE.ShaderMaterial({
+          uniforms: {
+            uVolume: { value: this.volumeTexture },
+            uVolumeSize: { value: new THREE.Vector3(gridSize, gridSize, gridSize) },
+            uColor: { value: new THREE.Color(0x00ff88) },
+            uStepScale: { value: stepScale },
+            uWorldMatrix: { value: new THREE.Matrix4() },
+            uWorldMatrixInverse: { value: new THREE.Matrix4() }
+          },
+          vertexShader: rayMarchVertexShader,
+          fragmentShader: rayMarchFragmentShader,
+          side: THREE.BackSide,
+          transparent: false,
+          depthWrite: true
+        });
+        console.log(`Ray march step scale: ${stepScale} for ${gridSize}³`);
+
+        this.volumeMesh = new THREE.Mesh(geometry, this.material);
+        this.volumeMesh.onBeforeRender = () => {
+          // Update world matrix uniforms before each render
+          this.material.uniforms.uWorldMatrix.value.copy(this.volumeMesh.matrixWorld);
+          this.material.uniforms.uWorldMatrixInverse.value.copy(this.volumeMesh.matrixWorld).invert();
+        };
+        scene.add(this.volumeMesh);
+
+        this.initialized = true;
+        return true;
+      }
+
+      createVolumeTexture() {
+        const size = this.gridSize;
+
+        // Create Three.js Data3DTexture
+        const data = new Uint8Array(size * size * size);
+        this.volumeTexture = new THREE.Data3DTexture(data, size, size, size);
+        this.volumeTexture.format = THREE.RedFormat;
+        this.volumeTexture.type = THREE.UnsignedByteType;
+        this.volumeTexture.minFilter = THREE.NearestFilter;
+        this.volumeTexture.magFilter = THREE.NearestFilter;
+        this.volumeTexture.wrapS = THREE.ClampToEdgeWrapping;
+        this.volumeTexture.wrapT = THREE.ClampToEdgeWrapping;
+        this.volumeTexture.wrapR = THREE.ClampToEdgeWrapping;
+        this.volumeTexture.needsUpdate = true;
+      }
+
+      uploadGrid(gridData) {
+        if (!this.volumeTexture) return;
+
+        // Direct copy - gridData is already 0/1, texture expects 0-255
+        // But since we use > 0.5 threshold, 1 works fine
+        const data = this.volumeTexture.image.data;
+        data.set(gridData);
+        this.volumeTexture.needsUpdate = true;
+      }
+
+      setPosition(x, y, z) {
+        if (this.volumeMesh) {
+          this.volumeMesh.position.set(x, y, z);
+        }
+      }
+
+      setColor(color) {
+        if (this.material) {
+          this.material.uniforms.uColor.value.set(color);
+        }
+      }
+
+      dispose() {
+        if (this.volumeTexture) {
+          this.volumeTexture.dispose();
+          this.volumeTexture = null;
+        }
+        if (this.volumeMesh) {
+          this.scene.remove(this.volumeMesh);
+          this.volumeMesh.geometry.dispose();
+          this.volumeMesh = null;
+        }
+        if (this.material) {
+          this.material.dispose();
+          this.material = null;
+        }
+        this.initialized = false;
+      }
+    }
+
+    // ============================================================
     // RULE PRESETS
     // ============================================================
 
@@ -1158,8 +1973,16 @@
     let useWebGL = false;
     let useWorker = false;
 
-    // Compute mode: 'webgl' | 'worker' | 'cpu'
+    // Full GPU pipeline (CA + ray marching, zero CPU readback during play)
+    let fullGPU = null;
+    let useFullGPU = false;
+
+    // Compute mode: 'fullgpu' | 'webgl' | 'worker' | 'cpu'
     let computeMode = 'cpu';
+
+    // Render mode: 'instanced' | 'raymarch' | 'fullgpu'
+    let renderMode = 'instanced';
+    let volumeRenderer = null;
 
     // Timeline history
     let history = [];
@@ -1251,8 +2074,8 @@
       generation = 0;
       maxGeneration = 0;
 
-      // Setup instanced mesh
-      setupInstancedMesh();
+      // Setup renderer - use ray marching for large grids (>= 100)
+      setupRenderer();
 
       // Setup camera position
       const offset = gridSize * 1.2;
@@ -1261,7 +2084,7 @@
       controls.update();
 
       // Update visualization
-      updateMesh();
+      updateVisualization();
       updateStats();
 
       // Clear and initialize history
@@ -1280,11 +2103,37 @@
         webglCompute.dispose();
         webglCompute = null;
       }
+      if (fullGPU) {
+        fullGPU.dispose();
+        fullGPU = null;
+      }
 
       pendingStep = false;
-      const total = gridSize * gridSize * gridSize;
+      useFullGPU = false;
+      useWebGL = false;
+      useWorker = false;
 
-      // Try WebGL first for large grids (Level 4)
+      // Try GPU compute for large grids (100+) - GPU simulation + instanced mesh rendering
+      // This is hybrid: GPU does CA math, but we sync to CPU for instanced mesh rendering
+      if (gridSize >= 100) {
+        try {
+          fullGPU = new FullGPUPipeline(renderer);
+          if (fullGPU.init(gridSize, preset.birth, preset.survival)) {
+            fullGPU.uploadInitialState(currentGrid.data);
+            computeMode = 'fullgpu';
+            // Use instanced mesh for rendering (not ray marching) - shows actual cubes
+            renderMode = 'instanced';
+            useFullGPU = true;
+            console.log(`Using GPU compute + instanced mesh for ${gridSize}³ grid`);
+            return;
+          }
+        } catch (e) {
+          console.warn('GPU compute not available:', e);
+        }
+        fullGPU = null;
+      }
+
+      // Try WebGL compute for medium-large grids (50-99)
       if (gridSize >= 50) {
         try {
           webglCompute = new WebGLCACompute();
@@ -1292,7 +2141,6 @@
             webglCompute.uploadGrid(currentGrid.data);
             computeMode = 'webgl';
             useWebGL = true;
-            useWorker = false;
             console.log(`Using WebGL compute for ${gridSize}³ grid`);
             return;
           }
@@ -1302,7 +2150,7 @@
         webglCompute = null;
       }
 
-      // Try Web Worker for medium+ grids (Level 3)
+      // Try Web Worker for medium grids (30-49)
       if (gridSize >= 30 && typeof Worker !== 'undefined') {
         try {
           caWorker = createCAWorker();
@@ -1331,7 +2179,6 @@
 
           computeMode = 'worker';
           useWorker = true;
-          useWebGL = false;
           console.log(`Using Web Worker for ${gridSize}³ grid`);
           return;
         } catch (e) {
@@ -1342,8 +2189,6 @@
 
       // Fallback to optimized CPU (Level 1+2)
       computeMode = 'cpu';
-      useWebGL = false;
-      useWorker = false;
       console.log(`Using optimized CPU for ${gridSize}³ grid`);
     }
 
@@ -1363,7 +2208,7 @@
           generation++;
           if (generation > maxGeneration) maxGeneration = generation;
           saveToHistory();
-          updateMesh();
+          updateVisualization();
           lastStepTime = performance.now() - workerStepStart;
           updateStats();
           break;
@@ -1377,29 +2222,52 @@
     // Maximum instances we can render (1M instances = 64MB buffer, reasonable limit)
     const MAX_RENDER_INSTANCES = 1000000;
 
-    function setupInstancedMesh() {
-      // Remove old mesh (don't dispose shared geometry/material)
+    // Threshold for switching to ray marching
+    // DISABLED: Ray marching is slower than instanced mesh without GPU-based CA simulation
+    // because we're still uploading 125MB per frame for 500³
+    const RAYMARCH_THRESHOLD = 9999; // Effectively disabled
+
+    function setupRenderer() {
+      // Dispose previous renderers (but not fullGPU - it's handled in initComputeBackends)
+      disposeRenderer();
+
+      // Always use instanced mesh for rendering - shows actual cubes
+      // GPU compute modes (fullGPU, webgl) just handle the CA simulation
+      renderMode = 'instanced';
+      setupInstancedMesh();
+
+      // Create grid helper (wireframe box)
+      setupGridHelper();
+    }
+
+    function disposeRenderer() {
       if (instancedMesh) {
         scene.remove(instancedMesh);
         instancedMesh.dispose();
+        instancedMesh = null;
       }
-
-      // Remove old grid helper
+      if (volumeRenderer) {
+        volumeRenderer.dispose();
+        volumeRenderer = null;
+      }
       if (gridHelper) {
         scene.remove(gridHelper);
         gridHelper.geometry.dispose();
         gridHelper.material.dispose();
+        gridHelper = null;
       }
+    }
 
+    function setupInstancedMesh() {
       // Create new instanced mesh - cap at MAX_RENDER_INSTANCES to avoid memory issues
       const totalCells = gridSize * gridSize * gridSize;
       const maxInstances = Math.min(totalCells, MAX_RENDER_INSTANCES);
       instancedMesh = new THREE.InstancedMesh(cubeGeometry, cubeMaterial, maxInstances);
       instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       scene.add(instancedMesh);
+    }
 
-      // Create grid helper (wireframe box)
-      const halfSize = gridSize / 2;
+    function setupGridHelper() {
       const boxGeom = new THREE.BoxGeometry(gridSize, gridSize, gridSize);
       const edgesGeom = new THREE.EdgesGeometry(boxGeom);
       gridHelper = new THREE.LineSegments(
@@ -1410,7 +2278,25 @@
       boxGeom.dispose();
     }
 
+    function updateVisualization() {
+      // Always use instanced mesh rendering - shows actual 3D cubes
+      updateMesh();
+    }
+
+    function updateVolume() {
+      // Upload grid data to 3D texture
+      volumeRenderer.uploadGrid(currentGrid.data);
+      volumeRenderer.setPosition(worldCenter.x, worldCenter.y, worldCenter.z);
+
+      // Update grid helper position
+      if (gridHelper) {
+        gridHelper.position.set(worldCenter.x, worldCenter.y, worldCenter.z);
+      }
+    }
+
     function updateMesh() {
+      if (!instancedMesh) return;
+
       const matrix = new THREE.Matrix4();
       const halfSize = gridSize / 2;
       const size = gridSize;
@@ -1450,14 +2336,27 @@
       const t0 = performance.now();
 
       // Use appropriate compute backend
-      if (computeMode === 'webgl' && webglCompute && webglCompute.initialized) {
+      if (computeMode === 'fullgpu' && fullGPU && fullGPU.initialized) {
+        // GPU compute - CA runs on GPU, then sync to CPU for instanced mesh rendering
+        fullGPU.step();
+        // Download result to CPU grid for instanced mesh rendering
+        fullGPU.downloadGrid(currentGrid.data);
+        generation++;
+        if (generation > maxGeneration) maxGeneration = generation;
+        // Save to history periodically for large grids
+        if (gridSize <= 100 || generation % 10 === 0) {
+          saveToHistory();
+        }
+        // Update instanced mesh with new data
+        updateVisualization();
+      } else if (computeMode === 'webgl' && webglCompute && webglCompute.initialized) {
         // WebGL compute (Level 4)
         webglCompute.step();
         webglCompute.readGrid(currentGrid.data);
         generation++;
         if (generation > maxGeneration) maxGeneration = generation;
         saveToHistory();
-        updateMesh();
+        updateVisualization();
       } else if (computeMode === 'worker' && caWorker && workerReady) {
         // Web Worker (Level 3) - async
         if (pendingStep) return; // Skip if worker is busy
@@ -1484,16 +2383,53 @@
         generation++;
         if (generation > maxGeneration) maxGeneration = generation;
         saveToHistory();
-        updateMesh();
+        updateVisualization();
       }
 
       lastStepTime = performance.now() - t0;
       updateStats();
     }
 
+    // Save to history when using fullGPU (downloads from GPU)
+    function saveToHistoryFromGPU() {
+      if (!fullGPU || !fullGPU.initialized) return;
+
+      // Limit history for large grids
+      const maxHistory = gridSize >= 300 ? 5 : gridSize >= 200 ? 10 : gridSize >= 100 ? 20 : MAX_HISTORY;
+
+      // Truncate forward history if not at end
+      if (historyIndex < history.length - 1) {
+        history = history.slice(0, historyIndex + 1);
+      }
+
+      // Download grid data from GPU
+      const data = new Uint8Array(currentGrid.size);
+      fullGPU.downloadGrid(data);
+      currentGrid.data.set(data); // Keep CPU grid in sync for timeline
+
+      // Save state
+      history.push({
+        data: new Uint8Array(data),
+        generation: generation
+      });
+
+      // Limit history size
+      if (history.length > maxHistory) {
+        history.shift();
+      } else {
+        historyIndex++;
+      }
+
+      updateTimelineUI();
+    }
+
     function updateStats() {
-      // Count population during mesh update to avoid double iteration
-      lastPopulation = instancedMesh ? instancedMesh.count : currentGrid.countPopulation();
+      // Count population from instanced mesh count
+      if (instancedMesh) {
+        lastPopulation = instancedMesh.count;
+      } else {
+        lastPopulation = currentGrid.countPopulation();
+      }
       const density = (lastPopulation / currentGrid.size * 100).toFixed(1);
 
       generationEl.textContent = generation;
@@ -1541,7 +2477,9 @@
       generation = state.generation;
 
       // Sync with compute backends
-      if (computeMode === 'webgl' && webglCompute && webglCompute.initialized) {
+      if (computeMode === 'fullgpu' && fullGPU && fullGPU.initialized) {
+        fullGPU.uploadInitialState(currentGrid.data);
+      } else if (computeMode === 'webgl' && webglCompute && webglCompute.initialized) {
         webglCompute.uploadGrid(currentGrid.data);
       } else if (computeMode === 'worker' && caWorker && workerReady) {
         caWorker.postMessage({
@@ -1550,7 +2488,7 @@
         });
       }
 
-      updateMesh();
+      updateVisualization();
       updateStats();
       updateTimelineUI();
     }
@@ -1611,7 +2549,7 @@
       centerXValue.textContent = worldCenter.x;
       centerYValue.textContent = worldCenter.y;
       centerZValue.textContent = worldCenter.z;
-      updateMesh();
+      updateVisualization();
     }
 
     centerXSlider.addEventListener('input', updateWorldCenter);
@@ -1627,7 +2565,9 @@
       ruleLookups = createRuleLookups(rule.birth, rule.survival, maxNeighbors);
 
       // Update compute backends
-      if (computeMode === 'webgl' && webglCompute) {
+      if (computeMode === 'fullgpu' && fullGPU && fullGPU.initialized) {
+        fullGPU.setRule(preset.birth, preset.survival);
+      } else if (computeMode === 'webgl' && webglCompute) {
         webglCompute.setRule(preset.birth, preset.survival);
       } else if (computeMode === 'worker' && caWorker && workerReady) {
         caWorker.postMessage({
@@ -1710,7 +2650,7 @@
       // Update controls
       controls.update();
 
-      // Render
+      // Render Three.js scene (instanced mesh cubes + grid helper)
       renderer.render(scene, camera);
     }
 
