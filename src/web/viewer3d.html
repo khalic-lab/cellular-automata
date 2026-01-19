@@ -383,6 +383,7 @@
           <span id="slicePosValue">10</span>
         </div>
       </div>
+      <canvas id="sliceCanvas" width="200" height="200" style="display:none; width:100%; aspect-ratio:1; background:#1a1a2e; border-radius:4px; margin-top:8px; image-rendering:pixelated;"></canvas>
     </div>
 
     <div class="control-group">
@@ -2294,72 +2295,29 @@
     // --- Slice View ---
     let sliceAxis = 'off'; // 'off' | 'x' | 'y' | 'z'
     let slicePosition = 10;
-    let slicePlane = null;
-    let sliceTexture = null;
-    let sliceCanvas = null;
+    const sliceDisplayCanvas = document.getElementById('sliceCanvas');
 
-    function setupSlicePlane() {
-      if (slicePlane) {
-        scene.remove(slicePlane);
-        slicePlane.geometry.dispose();
-        slicePlane.material.dispose();
-        if (sliceTexture) sliceTexture.dispose();
-        slicePlane = null;
-        sliceTexture = null;
-      }
-
-      if (sliceAxis === 'off') return;
-
-      // Create canvas for slice texture
-      sliceCanvas = document.createElement('canvas');
-      sliceCanvas.width = gridSize;
-      sliceCanvas.height = gridSize;
-
-      sliceTexture = new THREE.CanvasTexture(sliceCanvas);
-      sliceTexture.minFilter = THREE.NearestFilter;
-      sliceTexture.magFilter = THREE.NearestFilter;
-
-      const geometry = new THREE.PlaneGeometry(gridSize, gridSize);
-      const material = new THREE.MeshBasicMaterial({
-        map: sliceTexture,
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide,
-        depthWrite: false
-      });
-
-      slicePlane = new THREE.Mesh(geometry, material);
-      scene.add(slicePlane);
-
-      updateSlicePlanePosition();
-      updateSliceTexture();
-    }
-
-    function updateSlicePlanePosition() {
-      if (!slicePlane) return;
-      const halfSize = gridSize / 2;
-      const pos = slicePosition - halfSize + 0.5;
-
-      if (sliceAxis === 'x') {
-        slicePlane.position.set(pos + worldCenter.x, worldCenter.y, worldCenter.z);
-        slicePlane.rotation.set(0, Math.PI / 2, 0);
-      } else if (sliceAxis === 'y') {
-        slicePlane.position.set(worldCenter.x, pos + worldCenter.y, worldCenter.z);
-        slicePlane.rotation.set(-Math.PI / 2, 0, 0);
-      } else if (sliceAxis === 'z') {
-        slicePlane.position.set(worldCenter.x, worldCenter.y, pos + worldCenter.z);
-        slicePlane.rotation.set(0, 0, 0);
+    function setupSliceView() {
+      // Show/hide the slice canvas based on axis selection
+      sliceDisplayCanvas.style.display = sliceAxis === 'off' ? 'none' : 'block';
+      if (sliceAxis !== 'off') {
+        updateSliceTexture();
       }
     }
 
     function updateSliceTexture() {
-      if (!sliceCanvas || !sliceTexture || sliceAxis === 'off') return;
+      if (sliceAxis === 'off' || !currentGrid) return;
 
-      const ctx = sliceCanvas.getContext('2d');
+      const canvas = sliceDisplayCanvas;
+      const ctx = canvas.getContext('2d');
       const size = gridSize;
       const size2 = size * size;
       const data = currentGrid.data;
       const pos = slicePosition;
+
+      // Resize canvas to match grid size
+      canvas.width = size;
+      canvas.height = size;
 
       ctx.fillStyle = '#1a1a2e';
       ctx.fillRect(0, 0, size, size);
@@ -2367,19 +2325,33 @@
       const imageData = ctx.createImageData(size, size);
       const pixels = imageData.data;
 
-      for (let i = 0; i < size; i++) {
-        for (let j = 0; j < size; j++) {
-          let idx;
+      // Grid data layout: idx = x * size² + y * size + z
+      // Canvas layout: pixel at (col, row) where row=0 is top
+      // We want Y to increase upward visually, so flip row
+      for (let row = 0; row < size; row++) {
+        for (let col = 0; col < size; col++) {
+          let x, y, z;
+
           if (sliceAxis === 'x') {
-            idx = pos * size2 + i * size + j;
+            // X slice (YZ plane): col=Z, row=Y (flip Y so 0 is bottom)
+            x = pos;
+            y = size - 1 - row;
+            z = col;
           } else if (sliceAxis === 'y') {
-            idx = i * size2 + pos * size + j;
+            // Y slice (XZ plane): col=Z, row=X (flip X so 0 is bottom)
+            x = size - 1 - row;
+            y = pos;
+            z = col;
           } else {
-            idx = i * size2 + j * size + pos;
+            // Z slice (XY plane): col=X, row=Y (flip Y so 0 is bottom)
+            x = col;
+            y = size - 1 - row;
+            z = pos;
           }
 
+          const idx = x * size2 + y * size + z;
           const state = data[idx];
-          const pxIdx = (i * size + j) * 4;
+          const pxIdx = (row * size + col) * 4;
 
           if (state === maxState) {
             // Alive - cyan
@@ -2395,17 +2367,16 @@
             pixels[pxIdx + 2] = 0;
             pixels[pxIdx + 3] = 255;
           } else {
-            // Dead - transparent dark
+            // Dead - dark background
             pixels[pxIdx] = 26;
             pixels[pxIdx + 1] = 26;
             pixels[pxIdx + 2] = 46;
-            pixels[pxIdx + 3] = 100;
+            pixels[pxIdx + 3] = 255;
           }
         }
       }
 
       ctx.putImageData(imageData, 0, 0);
-      sliceTexture.needsUpdate = true;
     }
 
     // --- Population Graph ---
@@ -2598,7 +2569,7 @@
       slicePosition = Math.floor(gridSize / 2);
       slicePosSlider.value = slicePosition;
       slicePosValue.textContent = slicePosition;
-      setupSlicePlane();
+      setupSliceView();
     }
 
     // Initialize compute backends with automatic fallback
@@ -3237,13 +3208,12 @@
     sliceAxisSelect.addEventListener('change', () => {
       sliceAxis = sliceAxisSelect.value;
       slicePosRow.style.display = sliceAxis === 'off' ? 'none' : 'flex';
-      setupSlicePlane();
+      setupSliceView();
     });
 
     slicePosSlider.addEventListener('input', () => {
       slicePosition = parseInt(slicePosSlider.value);
       slicePosValue.textContent = slicePosition;
-      updateSlicePlanePosition();
       updateSliceTexture();
     });
 
