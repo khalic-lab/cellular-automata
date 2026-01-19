@@ -2,6 +2,27 @@
 
 A zero-dependency TypeScript library for running cellular automata in arbitrary dimensions with an LLM-friendly JSON interface.
 
+## 3D Web Viewer
+
+The `src/web/viewer3d.html` provides an interactive 3D visualization using Three.js.
+
+### Acknowledgments
+
+The 3D viewer is inspired by [williamyang98/3D-Cellular-Automata](https://github.com/williamyang98/3D-Cellular-Automata), an excellent WebGL-based 3D CA simulator. Rule names (Amoeba, Builder, Crystal, etc.) come from [Softology's 3D Cellular Automata research](https://softologyblog.wordpress.com/2019/12/28/3d-cellular-automata-3/).
+
+**Key differences from williamyang98's implementation:**
+
+| Feature | williamyang98 | This Project |
+|---------|--------------|--------------|
+| Architecture | React app, pure WebGL | Single HTML file, Three.js |
+| Simulation | Full GPU (3D textures) | Hybrid CPU/Worker/WebGL |
+| Max Scale | 1024³ (1B cells) | ~200³ (8M cells) |
+| Rendering | Custom ray marching | Instanced mesh cubes |
+| Initialization | Spherical blobs | Spherical blobs |
+| State Management | Recoil | Vanilla JS |
+
+For production-grade 3D CA with massive scale, see [williamyang98's project](https://williamyang98.github.io/3D-Cellular-Automata/).
+
 ## Features
 
 - **N-Dimensional**: Works in any number of dimensions (2D, 3D, 4D, ...)

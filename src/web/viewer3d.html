@@ -154,6 +154,35 @@
       margin-top: 4px;
     }
 
+    .center-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .center-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .center-row span:first-child {
+      width: 16px;
+      font-size: 12px;
+      color: #888;
+    }
+
+    .center-row input[type="range"] {
+      flex: 1;
+    }
+
+    .center-row span:last-child {
+      width: 30px;
+      text-align: right;
+      font-size: 12px;
+      color: #00ff88;
+    }
+
     #help {
       position: fixed;
       bottom: 20px;
@@ -226,6 +255,33 @@
     </div>
 
     <div class="control-group">
+      <label>Timeline</label>
+      <input type="range" id="timeline" min="0" max="0" value="0" step="1">
+      <div class="slider-value" id="timelineValue">0 / 0</div>
+    </div>
+
+    <div class="control-group">
+      <label>World Center</label>
+      <div class="center-controls">
+        <div class="center-row">
+          <span>X:</span>
+          <input type="range" id="centerX" min="-50" max="50" value="0" step="1">
+          <span id="centerXValue">0</span>
+        </div>
+        <div class="center-row">
+          <span>Y:</span>
+          <input type="range" id="centerY" min="-50" max="50" value="0" step="1">
+          <span id="centerYValue">0</span>
+        </div>
+        <div class="center-row">
+          <span>Z:</span>
+          <input type="range" id="centerZ" min="-50" max="50" value="0" step="1">
+          <span id="centerZValue">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="control-group">
       <label>Speed (ms/frame)</label>
       <input type="range" id="speed" min="50" max="1000" value="200" step="50">
       <div class="slider-value" id="speedValue">200ms</div>
@@ -233,8 +289,14 @@
 
     <div class="control-group">
       <label>Initial Density</label>
-      <input type="range" id="density" min="0.001" max="0.5" value="0.1" step="0.001">
-      <div class="slider-value" id="densityValue">10%</div>
+      <input type="range" id="density" min="0.1" max="1.0" value="0.5" step="0.05">
+      <div class="slider-value" id="densityValue">50%</div>
+    </div>
+
+    <div class="control-group">
+      <label>Blob Radius</label>
+      <input type="range" id="blobRadius" min="0.1" max="1.0" value="0.25" step="0.05">
+      <div class="slider-value" id="blobRadiusValue">25%</div>
     </div>
 
     <div class="control-group">
@@ -361,6 +423,63 @@
     function initializeRandom(grid, density, { next }) {
       for (let i = 0; i < grid.size; i++) {
         grid.data[i] = next() < density ? 1 : 0;
+      }
+    }
+
+    // Spherical blob initialization (inspired by williamyang98/3D-Cellular-Automata)
+    // Creates one or more spheres of random cells
+    function initializeBlob(grid, density, radius, numBlobs, { next }) {
+      const dims = grid.dimensions;
+      const size = dims[0];
+      const size2 = size * size;
+      const maxRadius = Math.min(...dims) / 2;
+      const actualRadius = radius * maxRadius;
+      const radiusSq = actualRadius * actualRadius;
+
+      // Clear grid first
+      grid.data.fill(0);
+
+      // Generate blob centers
+      const centers = [];
+      for (let b = 0; b < numBlobs; b++) {
+        if (b === 0) {
+          // First blob always at center
+          centers.push(dims.map(d => d / 2));
+        } else {
+          // Additional blobs at random positions (but not too close to edges)
+          const margin = actualRadius;
+          centers.push([
+            margin + next() * (dims[0] - 2 * margin),
+            margin + next() * (dims[1] - 2 * margin),
+            margin + next() * (dims[2] - 2 * margin)
+          ]);
+        }
+      }
+
+      // Fill cells within any sphere
+      for (let x = 0; x < dims[0]; x++) {
+        for (let y = 0; y < dims[1]; y++) {
+          for (let z = 0; z < dims[2]; z++) {
+            // Check distance to all blob centers
+            let inBlob = false;
+            for (const center of centers) {
+              const dx = x - center[0];
+              const dy = y - center[1];
+              const dz = z - center[2];
+              const distSq = dx * dx + dy * dy + dz * dz;
+              if (distSq <= radiusSq) {
+                inBlob = true;
+                break;
+              }
+            }
+
+            // If within any sphere and passes density check
+            if (inBlob && next() < density) {
+              const idx = x * size2 + y * size + z;
+              grid.data[idx] = 1;
+            }
+          }
+        }
       }
     }
 
@@ -950,20 +1069,22 @@
     // RULE PRESETS
     // ============================================================
 
+    // Rule presets with initialization parameters
+    // Based on williamyang98/3D-Cellular-Automata system_entries.js
     const RULE_PRESETS = {
-      // Stable presets
-      'amoeba': { birth: [6, 7, 8], survival: [5, 6, 7, 8] },      // Very stable blobs
-      'coral': { birth: [6, 7, 8], survival: [4, 5, 6, 7, 8] },    // Grows then stabilizes
-      'builder': { birth: [4], survival: [5, 6, 7] },              // Stable structures
-      'crystal': { birth: [5, 6], survival: [5, 6, 7] },           // Crystal-like growth
-      'slow-decay': { birth: [4], survival: [3, 4, 5, 6] },        // Slow, stable decay
+      // Stable presets - each has optimal init params (radius, density, blobs)
+      'amoeba': { birth: [6, 7, 8], survival: [5, 6, 7, 8], init: { radius: 0.3, density: 1.0, blobs: 5 } },
+      'coral': { birth: [6, 7, 8], survival: [4, 5, 6, 7, 8], init: { radius: 0.25, density: 1.0, blobs: 3 } },
+      'builder': { birth: [4], survival: [5, 6, 7], init: { radius: 0.35, density: 1.0, blobs: 5 } },
+      'crystal': { birth: [5, 6], survival: [5, 6, 7], init: { radius: 0.05, density: 1.0, blobs: 1 } },  // Tiny seed
+      'slow-decay': { birth: [4], survival: [3, 4, 5, 6], init: { radius: 0.4, density: 0.5, blobs: 1 } },
       // Classic presets
-      '4/4': { birth: [4], survival: [4] },
-      '5/5': { birth: [5], survival: [5] },
-      '4/5': { birth: [4], survival: [5] },
-      '5-7/6': { birth: [5, 6, 7], survival: [6] },
-      '6-7/5-6': { birth: [6, 7], survival: [5, 6] },
-      'conway': { birth: [3], survival: [2, 3] }  // Classic 2D rules applied to 3D
+      '4/4': { birth: [4], survival: [4], init: { radius: 0.1, density: 1.0, blobs: 10 } },
+      '5/5': { birth: [5], survival: [5], init: { radius: 0.15, density: 1.0, blobs: 8 } },
+      '4/5': { birth: [4], survival: [5], init: { radius: 0.2, density: 1.0, blobs: 5 } },
+      '5-7/6': { birth: [5, 6, 7], survival: [6], init: { radius: 0.25, density: 1.0, blobs: 3 } },
+      '6-7/5-6': { birth: [6, 7], survival: [5, 6], init: { radius: 0.3, density: 1.0, blobs: 3 } },
+      'conway': { birth: [3], survival: [2, 3], init: { radius: 0.3, density: 0.5, blobs: 1 } }
     };
 
     // ============================================================
@@ -1022,7 +1143,8 @@
     let isPlaying = false;
     let frameInterval = 200;
     let lastFrameTime = 0;
-    let initialDensity = 0.1;
+    let initialDensity = 0.5;
+    let blobRadius = 0.25;
     let maxGeneration = 0;
 
     // Optimized CA state
@@ -1039,9 +1161,25 @@
     // Compute mode: 'webgl' | 'worker' | 'cpu'
     let computeMode = 'cpu';
 
+    // Timeline history
+    let history = [];
+    let historyIndex = -1;
+    const MAX_HISTORY = 1000;
+
+    // World center offset
+    let worldCenter = { x: 0, y: 0, z: 0 };
+
     // DOM elements
     const playPauseBtn = document.getElementById('playPause');
     const stepBtn = document.getElementById('step');
+    const timelineSlider = document.getElementById('timeline');
+    const timelineValue = document.getElementById('timelineValue');
+    const centerXSlider = document.getElementById('centerX');
+    const centerYSlider = document.getElementById('centerY');
+    const centerZSlider = document.getElementById('centerZ');
+    const centerXValue = document.getElementById('centerXValue');
+    const centerYValue = document.getElementById('centerYValue');
+    const centerZValue = document.getElementById('centerZValue');
     const resetBtn = document.getElementById('reset');
     const presetSelect = document.getElementById('preset');
     const gridSizeSelect = document.getElementById('gridSize');
@@ -1049,28 +1187,56 @@
     const speedValue = document.getElementById('speedValue');
     const densitySlider = document.getElementById('density');
     const densityValue = document.getElementById('densityValue');
+    const blobRadiusSlider = document.getElementById('blobRadius');
+    const blobRadiusValue = document.getElementById('blobRadiusValue');
     const generationEl = document.getElementById('generation');
     const populationEl = document.getElementById('population');
     const densityStatEl = document.getElementById('densityStat');
     const maxGenEl = document.getElementById('maxGen');
 
-    // Initialize
-    function initSimulation() {
+    // Initialize simulation
+    // useSliderValues: if true, use current slider values instead of preset defaults
+    function initSimulation(useSliderValues = false) {
       // Create grids
       const dims = [gridSize, gridSize, gridSize];
       currentGrid = new Grid(dims);
       nextGrid = new Grid(dims);
 
-      // Initialize with random cells
+      // Get current rule preset and its optimal initialization parameters
+      const preset = RULE_PRESETS[presetSelect.value];
+      const initParams = preset.init;
+
+      // Determine init parameters: use slider values if overriding, otherwise preset
+      let density, radius, blobs;
+      if (useSliderValues) {
+        // Manual override: use slider values
+        density = initialDensity;
+        radius = blobRadius;
+        blobs = initParams.blobs; // Keep preset's blob count
+      } else {
+        // Use preset's optimal initialization
+        density = initParams.density;
+        radius = initParams.radius;
+        blobs = initParams.blobs;
+
+        // Update sliders to reflect preset values
+        blobRadius = radius;
+        initialDensity = density;
+        blobRadiusSlider.value = radius;
+        densitySlider.value = density;
+        blobRadiusValue.textContent = formatDensity(radius);
+        densityValue.textContent = formatDensity(density);
+      }
+
+      // Initialize with spherical blob(s)
       const rng = createRandom(Date.now());
-      initializeRandom(currentGrid, initialDensity, rng);
+      initializeBlob(currentGrid, density, radius, blobs, rng);
 
       // Generate neighborhood (Moore 3D)
       neighborhood = generateNeighborhood(dims, { type: 'moore', range: 1 });
       const maxNeighbors = getMaxNeighbors(dims, 'moore', 1);
 
-      // Get current rule preset
-      const preset = RULE_PRESETS[presetSelect.value];
+      // Create rule from preset
       rule = createRule(preset.birth, preset.survival, maxNeighbors);
 
       // --- Level 1+2: Compute neighbor deltas, offsets, and rule lookups ---
@@ -1097,6 +1263,9 @@
       // Update visualization
       updateMesh();
       updateStats();
+
+      // Clear and initialize history
+      clearHistory();
     }
 
     // Initialize compute backends with automatic fallback
@@ -1179,6 +1348,8 @@
     }
 
     // Handle messages from Web Worker
+    let workerStepStart = 0;
+
     function handleWorkerMessage(e) {
       const { type, data } = e.data;
       switch (type) {
@@ -1186,11 +1357,14 @@
           workerReady = true;
           break;
         case 'stepComplete':
+          const t0 = performance.now();
           currentGrid.data.set(data);
           pendingStep = false;
           generation++;
           if (generation > maxGeneration) maxGeneration = generation;
+          saveToHistory();
           updateMesh();
+          lastStepTime = performance.now() - workerStepStart;
           updateStats();
           break;
         case 'resetComplete':
@@ -1199,6 +1373,9 @@
           break;
       }
     }
+
+    // Maximum instances we can render (1M instances = 64MB buffer, reasonable limit)
+    const MAX_RENDER_INSTANCES = 1000000;
 
     function setupInstancedMesh() {
       // Remove old mesh (don't dispose shared geometry/material)
@@ -1214,8 +1391,9 @@
         gridHelper.material.dispose();
       }
 
-      // Create new instanced mesh
-      const maxInstances = gridSize * gridSize * gridSize;
+      // Create new instanced mesh - cap at MAX_RENDER_INSTANCES to avoid memory issues
+      const totalCells = gridSize * gridSize * gridSize;
+      const maxInstances = Math.min(totalCells, MAX_RENDER_INSTANCES);
       instancedMesh = new THREE.InstancedMesh(cubeGeometry, cubeMaterial, maxInstances);
       instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       scene.add(instancedMesh);
@@ -1235,28 +1413,42 @@
     function updateMesh() {
       const matrix = new THREE.Matrix4();
       const halfSize = gridSize / 2;
+      const size = gridSize;
+      const size2 = size * size;
+      const data = currentGrid.data;
+      const total = data.length;
+      const ox = worldCenter.x - halfSize + 0.5;
+      const oy = worldCenter.y - halfSize + 0.5;
+      const oz = worldCenter.z - halfSize + 0.5;
+      const maxInstances = Math.min(total, MAX_RENDER_INSTANCES);
       let instanceIndex = 0;
 
-      for (let x = 0; x < gridSize; x++) {
-        for (let y = 0; y < gridSize; y++) {
-          for (let z = 0; z < gridSize; z++) {
-            if (currentGrid.get([x, y, z]) === 1) {
-              matrix.setPosition(
-                x - halfSize + 0.5,
-                y - halfSize + 0.5,
-                z - halfSize + 0.5
-              );
-              instancedMesh.setMatrixAt(instanceIndex++, matrix);
-            }
-          }
+      // Direct array iteration - much faster than nested loops with get()
+      for (let idx = 0; idx < total && instanceIndex < maxInstances; idx++) {
+        if (data[idx]) {
+          const z = idx % size;
+          const y = ((idx / size) | 0) % size;
+          const x = (idx / size2) | 0;
+          matrix.setPosition(x + ox, y + oy, z + oz);
+          instancedMesh.setMatrixAt(instanceIndex++, matrix);
         }
       }
 
       instancedMesh.count = instanceIndex;
       instancedMesh.instanceMatrix.needsUpdate = true;
+
+      // Update grid helper position
+      if (gridHelper) {
+        gridHelper.position.set(worldCenter.x, worldCenter.y, worldCenter.z);
+      }
     }
 
+    let lastStepTime = 0;
+    let lastPopulation = 0;
+
     function stepSimulation() {
+      const t0 = performance.now();
+
       // Use appropriate compute backend
       if (computeMode === 'webgl' && webglCompute && webglCompute.initialized) {
         // WebGL compute (Level 4)
@@ -1264,14 +1456,16 @@
         webglCompute.readGrid(currentGrid.data);
         generation++;
         if (generation > maxGeneration) maxGeneration = generation;
+        saveToHistory();
         updateMesh();
-        updateStats();
       } else if (computeMode === 'worker' && caWorker && workerReady) {
         // Web Worker (Level 3) - async
         if (pendingStep) return; // Skip if worker is busy
         pendingStep = true;
+        workerStepStart = performance.now();
         caWorker.postMessage({ type: 'step' });
         // Result handled in handleWorkerMessage
+        return; // Stats updated in handler
       } else {
         // Optimized CPU (Level 1+2)
         stepGridOptimized(
@@ -1289,25 +1483,103 @@
 
         generation++;
         if (generation > maxGeneration) maxGeneration = generation;
+        saveToHistory();
         updateMesh();
-        updateStats();
       }
+
+      lastStepTime = performance.now() - t0;
+      updateStats();
     }
 
     function updateStats() {
-      const population = currentGrid.countPopulation();
-      const density = (population / currentGrid.size * 100).toFixed(1);
+      // Count population during mesh update to avoid double iteration
+      lastPopulation = instancedMesh ? instancedMesh.count : currentGrid.countPopulation();
+      const density = (lastPopulation / currentGrid.size * 100).toFixed(1);
 
       generationEl.textContent = generation;
-      populationEl.textContent = population;
+      populationEl.textContent = lastPopulation;
       densityStatEl.textContent = density + '%';
       maxGenEl.textContent = maxGeneration;
+      document.getElementById('stepTime').textContent = lastStepTime.toFixed(0) + 'ms';
+      document.getElementById('computeMode').textContent = computeMode;
+    }
+
+    // History management
+    function saveToHistory() {
+      // Limit history based on grid size to avoid memory issues
+      // 500³ = 125MB per snapshot, 200³ = 8MB, 100³ = 1MB
+      const maxHistory = gridSize >= 300 ? 5 : gridSize >= 200 ? 10 : gridSize >= 100 ? 50 : gridSize >= 50 ? 200 : MAX_HISTORY;
+
+      // If we're not at the end of history, truncate forward history
+      if (historyIndex < history.length - 1) {
+        history = history.slice(0, historyIndex + 1);
+      }
+
+      // Save current state
+      history.push({
+        data: new Uint8Array(currentGrid.data),
+        generation: generation
+      });
+
+      // Limit history size
+      if (history.length > maxHistory) {
+        history.shift();
+      } else {
+        historyIndex++;
+      }
+
+      updateTimelineUI();
+    }
+
+    function restoreFromHistory(index) {
+      if (index < 0 || index >= history.length) return;
+
+      historyIndex = index;
+      const state = history[historyIndex];
+
+      currentGrid.data.set(state.data);
+      generation = state.generation;
+
+      // Sync with compute backends
+      if (computeMode === 'webgl' && webglCompute && webglCompute.initialized) {
+        webglCompute.uploadGrid(currentGrid.data);
+      } else if (computeMode === 'worker' && caWorker && workerReady) {
+        caWorker.postMessage({
+          type: 'reset',
+          payload: { gridData: Array.from(currentGrid.data) }
+        });
+      }
+
+      updateMesh();
+      updateStats();
+      updateTimelineUI();
+    }
+
+    function updateTimelineUI() {
+      timelineSlider.max = Math.max(0, history.length - 1);
+      timelineSlider.value = historyIndex;
+      timelineValue.textContent = `${historyIndex + 1} / ${history.length}`;
+    }
+
+    function clearHistory() {
+      history = [];
+      historyIndex = -1;
+      // Save initial state
+      saveToHistory();
     }
 
     // Event handlers
     playPauseBtn.addEventListener('click', () => {
-      isPlaying = !isPlaying;
-      playPauseBtn.textContent = isPlaying ? 'Pause' : 'Play';
+      if (isPlaying) {
+        // If playing, reset the simulation (keep current slider values)
+        isPlaying = false;
+        playPauseBtn.textContent = 'Play';
+        initSimulation(true);
+      } else {
+        // If paused, start playing
+        isPlaying = true;
+        playPauseBtn.textContent = 'Reset';
+      }
     });
 
     stepBtn.addEventListener('click', () => {
@@ -1319,8 +1591,32 @@
     resetBtn.addEventListener('click', () => {
       isPlaying = false;
       playPauseBtn.textContent = 'Play';
-      initSimulation();
+      initSimulation(true); // Keep current slider values
     });
+
+    // Timeline control
+    timelineSlider.addEventListener('input', () => {
+      if (isPlaying) {
+        isPlaying = false;
+        playPauseBtn.textContent = 'Play';
+      }
+      restoreFromHistory(parseInt(timelineSlider.value));
+    });
+
+    // World center controls
+    function updateWorldCenter() {
+      worldCenter.x = parseInt(centerXSlider.value);
+      worldCenter.y = parseInt(centerYSlider.value);
+      worldCenter.z = parseInt(centerZSlider.value);
+      centerXValue.textContent = worldCenter.x;
+      centerYValue.textContent = worldCenter.y;
+      centerZValue.textContent = worldCenter.z;
+      updateMesh();
+    }
+
+    centerXSlider.addEventListener('input', updateWorldCenter);
+    centerYSlider.addEventListener('input', updateWorldCenter);
+    centerZSlider.addEventListener('input', updateWorldCenter);
 
     presetSelect.addEventListener('change', () => {
       const maxNeighbors = getMaxNeighbors([gridSize, gridSize, gridSize], 'moore', 1);
@@ -1342,13 +1638,22 @@
           }
         });
       }
+
+      // Update sliders to show preset's optimal init params (but don't reinitialize)
+      const initParams = preset.init;
+      blobRadius = initParams.radius;
+      initialDensity = initParams.density;
+      blobRadiusSlider.value = initParams.radius;
+      densitySlider.value = initParams.density;
+      blobRadiusValue.textContent = formatDensity(initParams.radius);
+      densityValue.textContent = formatDensity(initParams.density);
     });
 
     gridSizeSelect.addEventListener('change', () => {
       gridSize = parseInt(gridSizeSelect.value);
       isPlaying = false;
       playPauseBtn.textContent = 'Play';
-      initSimulation();
+      initSimulation(true); // Keep current slider values
     });
 
     speedSlider.addEventListener('input', () => {
@@ -1366,11 +1671,23 @@
       densityValue.textContent = formatDensity(initialDensity);
       isPlaying = false;
       playPauseBtn.textContent = 'Play';
-      initSimulation();
+      initSimulation(true); // Use slider values as override
     });
 
     densitySlider.addEventListener('input', () => {
       densityValue.textContent = formatDensity(parseFloat(densitySlider.value));
+    });
+
+    blobRadiusSlider.addEventListener('change', () => {
+      blobRadius = parseFloat(blobRadiusSlider.value);
+      blobRadiusValue.textContent = formatDensity(blobRadius);
+      isPlaying = false;
+      playPauseBtn.textContent = 'Play';
+      initSimulation(true); // Use slider values as override
+    });
+
+    blobRadiusSlider.addEventListener('input', () => {
+      blobRadiusValue.textContent = formatDensity(parseFloat(blobRadiusSlider.value));
     });
 
     // Window resize

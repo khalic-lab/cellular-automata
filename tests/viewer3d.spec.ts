@@ -95,7 +95,7 @@ test.describe('3D Viewer - Page Load', () => {
     expect(state.generation).toBe(0);
     expect(state.isPlaying).toBe(false);
     expect(state.frameInterval).toBe(200); // Default speed
-    expect(state.initialDensity).toBeCloseTo(0.1, 2); // Default density
+    expect(state.initialDensity).toBeCloseTo(1.0, 2); // Amoeba preset uses 100% density
     expect(state.population).toBeGreaterThan(0); // Should have some cells
   });
 });
@@ -222,10 +222,10 @@ test.describe('3D Viewer - UI Controls', () => {
     await expect(playBtn).toHaveText('Play');
 
     await playBtn.click();
-    await expect(playBtn).toHaveText('Pause');
+    await expect(playBtn).toHaveText('Reset'); // Now shows Reset when playing
 
     await playBtn.click();
-    await expect(playBtn).toHaveText('Play');
+    await expect(playBtn).toHaveText('Play'); // Clicking Reset stops and resets
   });
 
   test('step button does not work while playing', async ({ page }) => {
@@ -407,12 +407,13 @@ test.describe('3D Viewer - Auto-play', () => {
     // Wait for a few frames (default interval is 200ms)
     await page.waitForTimeout(700);
 
-    // Pause
-    await page.click('#playPause');
-
+    // Check generation before stopping (clicking playPause now resets)
     const afterPlay = await getState(page);
     // Should have advanced at least 2-3 generations in 700ms with 200ms interval
     expect(afterPlay.generation).toBeGreaterThanOrEqual(2);
+
+    // Now click to reset (stop + reset)
+    await page.click('#playPause');
   });
 
   test('reset stops auto-play', async ({ page }) => {
