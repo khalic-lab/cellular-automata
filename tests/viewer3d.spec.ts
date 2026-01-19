@@ -372,9 +372,13 @@ test.describe('3D Viewer - Rule Presets', () => {
     expect(newPreset).toBe('builder');
   });
 
-  test('changing preset does not reset generation', async ({ page }) => {
+  test('changing preset does not reset generation for same state count', async ({ page }) => {
     await page.goto('/viewer3d.html');
     await waitForTestInterface(page);
+
+    // Start with clouds preset (2 states)
+    await page.selectOption('#preset', 'clouds');
+    await page.waitForTimeout(50);
 
     // Step a few times
     await page.click('#step');
@@ -383,12 +387,12 @@ test.describe('3D Viewer - Rule Presets', () => {
     const beforeChange = await getState(page);
     expect(beforeChange.generation).toBe(2);
 
-    // Change preset
-    await page.selectOption('#preset', '445');
+    // Change to crystal preset (also 2 states)
+    await page.selectOption('#preset', 'crystal');
     await page.waitForTimeout(50);
 
     const afterChange = await getState(page);
-    // Generation should NOT reset when changing preset
+    // Generation should NOT reset when changing preset with same state count
     expect(afterChange.generation).toBe(2);
   });
 });

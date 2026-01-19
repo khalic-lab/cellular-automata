@@ -33,6 +33,23 @@
       min-width: 240px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
       z-index: 100;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    #ui::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #ui::-webkit-scrollbar-track {
+      background: #2a2a4a;
+      border-radius: 3px;
+    }
+
+    #ui::-webkit-scrollbar-thumb {
+      background: #00ff88;
+      border-radius: 3px;
     }
 
     #ui h1 {
@@ -286,6 +303,11 @@
       <label>Speed (ms/frame)</label>
       <input type="range" id="speed" min="50" max="1000" value="200" step="50">
       <div class="slider-value" id="speedValue">200ms</div>
+      <div class="control-row" style="margin-top:8px">
+        <button class="secondary" id="speedFast" style="flex:1;padding:6px">Fast</button>
+        <button class="secondary" id="speedNormal" style="flex:1;padding:6px">Normal</button>
+        <button class="secondary" id="speedSlow" style="flex:1;padding:6px">Slow</button>
+      </div>
     </div>
 
     <div class="control-group">
@@ -321,6 +343,54 @@
           <div class="stat-value" id="maxGen">0</div>
           <div class="stat-label">Max Gen</div>
         </div>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>Population History</label>
+      <canvas id="popGraph" width="200" height="40" style="width:100%; background:#2a2a4a; border-radius:4px;"></canvas>
+    </div>
+
+    <div class="control-group">
+      <label>State Distribution</label>
+      <div id="stateBar" style="height:12px; display:flex; border-radius:4px; overflow:hidden;"></div>
+      <div id="stateLegend" style="font-size:10px; margin-top:4px; color:#888;"></div>
+    </div>
+
+    <div class="control-group">
+      <label>Display Mode</label>
+      <select id="displayMode">
+        <option value="all">All Cells</option>
+        <option value="shell">Shell Only (Surface)</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>Slice View</label>
+      <div class="center-controls">
+        <div class="center-row">
+          <span>Axis:</span>
+          <select id="sliceAxis" style="flex:1">
+            <option value="off">Off</option>
+            <option value="x">X (YZ plane)</option>
+            <option value="y">Y (XZ plane)</option>
+            <option value="z">Z (XY plane)</option>
+          </select>
+        </div>
+        <div class="center-row" id="slicePosRow" style="display:none">
+          <span>Pos:</span>
+          <input type="range" id="slicePos" min="0" max="19" value="10">
+          <span id="slicePosValue">10</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>Camera</label>
+      <div class="control-row">
+        <button class="secondary" id="camFront" style="flex:1;padding:6px">Front</button>
+        <button class="secondary" id="camTop" style="flex:1;padding:6px">Top</button>
+        <button class="secondary" id="camCorner" style="flex:1;padding:6px">Corner</button>
       </div>
     </div>
   </div>
@@ -2111,7 +2181,7 @@
     let gridHelper = null;
     const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
     const aliveMaterial = new THREE.MeshLambertMaterial({ color: 0x00ffdd }); // Cyan for alive
-    const decayMaterial = new THREE.MeshLambertMaterial({ color: 0xff4400, transparent: true, opacity: 0.6 }); // Orange for decaying
+    const decayMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, vertexColors: true }); // Gradient colors for decaying
 
     // State
     let gridSize = 20;
@@ -2179,6 +2249,247 @@
     const populationEl = document.getElementById('population');
     const densityStatEl = document.getElementById('densityStat');
     const maxGenEl = document.getElementById('maxGen');
+
+    // New UI elements
+    const displayModeSelect = document.getElementById('displayMode');
+    const sliceAxisSelect = document.getElementById('sliceAxis');
+    const slicePosRow = document.getElementById('slicePosRow');
+    const slicePosSlider = document.getElementById('slicePos');
+    const slicePosValue = document.getElementById('slicePosValue');
+    const popGraphCanvas = document.getElementById('popGraph');
+    const stateBar = document.getElementById('stateBar');
+    const stateLegend = document.getElementById('stateLegend');
+
+    // ============================================================
+    // VISUALIZATION FEATURES
+    // ============================================================
+
+    // --- Display Mode ---
+    let displayMode = 'all'; // 'all' | 'shell'
+
+    function isSurfaceCell(idx, data, size) {
+      if (data[idx] === 0) return false;
+      const size2 = size * size;
+      const z = idx % size;
+      const y = ((idx / size) | 0) % size;
+      const x = (idx / size2) | 0;
+
+      // Check 6 direct neighbors (von Neumann)
+      const neighbors = [
+        [x-1, y, z], [x+1, y, z],
+        [x, y-1, z], [x, y+1, z],
+        [x, y, z-1], [x, y, z+1]
+      ];
+
+      for (const [nx, ny, nz] of neighbors) {
+        // Wrap coordinates
+        const wx = ((nx % size) + size) % size;
+        const wy = ((ny % size) + size) % size;
+        const wz = ((nz % size) + size) % size;
+        if (data[wx * size2 + wy * size + wz] === 0) return true;
+      }
+      return false;
+    }
+
+    // --- Slice View ---
+    let sliceAxis = 'off'; // 'off' | 'x' | 'y' | 'z'
+    let slicePosition = 10;
+    let slicePlane = null;
+    let sliceTexture = null;
+    let sliceCanvas = null;
+
+    function setupSlicePlane() {
+      if (slicePlane) {
+        scene.remove(slicePlane);
+        slicePlane.geometry.dispose();
+        slicePlane.material.dispose();
+        if (sliceTexture) sliceTexture.dispose();
+        slicePlane = null;
+        sliceTexture = null;
+      }
+
+      if (sliceAxis === 'off') return;
+
+      // Create canvas for slice texture
+      sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = gridSize;
+      sliceCanvas.height = gridSize;
+
+      sliceTexture = new THREE.CanvasTexture(sliceCanvas);
+      sliceTexture.minFilter = THREE.NearestFilter;
+      sliceTexture.magFilter = THREE.NearestFilter;
+
+      const geometry = new THREE.PlaneGeometry(gridSize, gridSize);
+      const material = new THREE.MeshBasicMaterial({
+        map: sliceTexture,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+
+      slicePlane = new THREE.Mesh(geometry, material);
+      scene.add(slicePlane);
+
+      updateSlicePlanePosition();
+      updateSliceTexture();
+    }
+
+    function updateSlicePlanePosition() {
+      if (!slicePlane) return;
+      const halfSize = gridSize / 2;
+      const pos = slicePosition - halfSize + 0.5;
+
+      if (sliceAxis === 'x') {
+        slicePlane.position.set(pos + worldCenter.x, worldCenter.y, worldCenter.z);
+        slicePlane.rotation.set(0, Math.PI / 2, 0);
+      } else if (sliceAxis === 'y') {
+        slicePlane.position.set(worldCenter.x, pos + worldCenter.y, worldCenter.z);
+        slicePlane.rotation.set(-Math.PI / 2, 0, 0);
+      } else if (sliceAxis === 'z') {
+        slicePlane.position.set(worldCenter.x, worldCenter.y, pos + worldCenter.z);
+        slicePlane.rotation.set(0, 0, 0);
+      }
+    }
+
+    function updateSliceTexture() {
+      if (!sliceCanvas || !sliceTexture || sliceAxis === 'off') return;
+
+      const ctx = sliceCanvas.getContext('2d');
+      const size = gridSize;
+      const size2 = size * size;
+      const data = currentGrid.data;
+      const pos = slicePosition;
+
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, size, size);
+
+      const imageData = ctx.createImageData(size, size);
+      const pixels = imageData.data;
+
+      for (let i = 0; i < size; i++) {
+        for (let j = 0; j < size; j++) {
+          let idx;
+          if (sliceAxis === 'x') {
+            idx = pos * size2 + i * size + j;
+          } else if (sliceAxis === 'y') {
+            idx = i * size2 + pos * size + j;
+          } else {
+            idx = i * size2 + j * size + pos;
+          }
+
+          const state = data[idx];
+          const pxIdx = (i * size + j) * 4;
+
+          if (state === maxState) {
+            // Alive - cyan
+            pixels[pxIdx] = 0;
+            pixels[pxIdx + 1] = 255;
+            pixels[pxIdx + 2] = 221;
+            pixels[pxIdx + 3] = 255;
+          } else if (state > 0) {
+            // Decaying - gradient from yellow to red
+            const t = state / maxState;
+            pixels[pxIdx] = 255;
+            pixels[pxIdx + 1] = Math.floor(t * 200);
+            pixels[pxIdx + 2] = 0;
+            pixels[pxIdx + 3] = 255;
+          } else {
+            // Dead - transparent dark
+            pixels[pxIdx] = 26;
+            pixels[pxIdx + 1] = 26;
+            pixels[pxIdx + 2] = 46;
+            pixels[pxIdx + 3] = 100;
+          }
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      sliceTexture.needsUpdate = true;
+    }
+
+    // --- Population Graph ---
+    const popHistory = [];
+    const MAX_POP_HISTORY = 200;
+
+    function updatePopGraph() {
+      const canvas = popGraphCanvas;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+
+      ctx.clearRect(0, 0, w, h);
+      if (popHistory.length < 2) return;
+
+      const maxPop = Math.max(...popHistory);
+      const minPop = Math.min(...popHistory);
+      const range = maxPop - minPop || 1;
+
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+
+      popHistory.forEach((pop, i) => {
+        const x = (i / (popHistory.length - 1)) * w;
+        const y = h - ((pop - minPop) / range) * (h - 4) - 2;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    function recordPopulation(pop) {
+      popHistory.push(pop);
+      if (popHistory.length > MAX_POP_HISTORY) {
+        popHistory.shift();
+      }
+      updatePopGraph();
+    }
+
+    function clearPopHistory() {
+      popHistory.length = 0;
+      updatePopGraph();
+    }
+
+    // --- State Distribution Bar ---
+    function updateStateBar() {
+      const data = currentGrid.data;
+      const total = data.length;
+
+      // Count states
+      const counts = new Array(maxState + 1).fill(0);
+      for (let i = 0; i < total; i++) {
+        counts[data[i]]++;
+      }
+
+      // Generate colors
+      const colors = ['#333']; // Dead = dark
+      for (let i = 1; i < maxState; i++) {
+        const t = i / maxState;
+        const h = 30 - t * 30; // Yellow to red
+        const l = 50 + t * 20;
+        colors.push(`hsl(${h}, 100%, ${l}%)`);
+      }
+      colors.push('#00ffdd'); // Alive = cyan
+
+      stateBar.innerHTML = counts.map((c, i) =>
+        c > 0 ? `<div style="flex:${c}; background:${colors[i]}" title="State ${i}: ${(c/total*100).toFixed(1)}%"></div>` : ''
+      ).join('');
+
+      const alive = counts[maxState];
+      const decaying = counts.slice(1, maxState).reduce((a,b) => a+b, 0);
+      const dead = counts[0];
+      stateLegend.textContent = `Alive: ${(alive/total*100).toFixed(1)}% | Decay: ${(decaying/total*100).toFixed(1)}% | Dead: ${(dead/total*100).toFixed(1)}%`;
+    }
+
+    // --- Gradient Decay Colors ---
+    // Create a color for each decay state: yellow (near alive) to dark red (near dead)
+    function getDecayColor(state, maxState) {
+      const t = state / maxState; // 0 = near dead, 1 = near alive
+      const r = 1.0;
+      const g = t * 0.8;  // Yellow to red
+      const b = 0;
+      return new THREE.Color(r, g, b);
+    }
 
     // Initialize simulation
     // useSliderValues: if true, use current slider density instead of preset default
@@ -2280,6 +2591,14 @@
 
       // Clear and initialize history
       clearHistory();
+
+      // Reset visualization features
+      clearPopHistory();
+      slicePosSlider.max = gridSize - 1;
+      slicePosition = Math.floor(gridSize / 2);
+      slicePosSlider.value = slicePosition;
+      slicePosValue.textContent = slicePosition;
+      setupSlicePlane();
     }
 
     // Initialize compute backends with automatic fallback
@@ -2517,10 +2836,21 @@
       let aliveIndex = 0;
       let decayIndex = 0;
 
+      // Pre-compute decay colors for gradient effect
+      const decayColors = [];
+      for (let s = 1; s < maxState; s++) {
+        decayColors.push(getDecayColor(s, maxState));
+      }
+
       // Direct array iteration - separate alive and decaying cells
       for (let idx = 0; idx < total; idx++) {
         const state = data[idx];
         if (state) {
+          // Shell mode: skip interior cells
+          if (displayMode === 'shell' && !isSurfaceCell(idx, data, size)) {
+            continue;
+          }
+
           const z = idx % size;
           const y = ((idx / size) | 0) % size;
           const x = (idx / size2) | 0;
@@ -2532,9 +2862,12 @@
               aliveMesh.setMatrixAt(aliveIndex++, matrix);
             }
           } else {
-            // Decaying - orange mesh
+            // Decaying - gradient colors based on state
             if (decayIndex < maxInstances) {
-              decayMesh.setMatrixAt(decayIndex++, matrix);
+              decayMesh.setMatrixAt(decayIndex, matrix);
+              // Set per-instance color based on decay state
+              decayMesh.setColorAt(decayIndex, decayColors[state - 1]);
+              decayIndex++;
             }
           }
         }
@@ -2545,11 +2878,17 @@
 
       decayMesh.count = decayIndex;
       decayMesh.instanceMatrix.needsUpdate = true;
+      if (decayMesh.instanceColor) {
+        decayMesh.instanceColor.needsUpdate = true;
+      }
 
       // Update grid helper position
       if (gridHelper) {
         gridHelper.position.set(worldCenter.x, worldCenter.y, worldCenter.z);
       }
+
+      // Update slice texture if active
+      updateSliceTexture();
     }
 
     let lastStepTime = 0;
@@ -2662,12 +3001,8 @@
     }
 
     function updateStats() {
-      // Count population from instanced mesh counts
-      if (aliveMesh && decayMesh) {
-        lastPopulation = aliveMesh.count + decayMesh.count;
-      } else {
-        lastPopulation = currentGrid.countPopulation();
-      }
+      // Count population from grid data (more accurate than mesh counts for shell mode)
+      lastPopulation = currentGrid.countPopulation();
       const density = (lastPopulation / currentGrid.size * 100).toFixed(1);
 
       generationEl.textContent = generation;
@@ -2676,6 +3011,12 @@
       maxGenEl.textContent = maxGeneration;
       document.getElementById('stepTime').textContent = lastStepTime.toFixed(0) + 'ms';
       document.getElementById('computeMode').textContent = computeMode;
+
+      // Update population graph
+      recordPopulation(lastPopulation);
+
+      // Update state distribution bar
+      updateStateBar();
     }
 
     // History management
@@ -2881,6 +3222,66 @@
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
+
+    // ============================================================
+    // NEW UI EVENT HANDLERS
+    // ============================================================
+
+    // --- Display Mode ---
+    displayModeSelect.addEventListener('change', () => {
+      displayMode = displayModeSelect.value;
+      updateVisualization();
+    });
+
+    // --- Slice View ---
+    sliceAxisSelect.addEventListener('change', () => {
+      sliceAxis = sliceAxisSelect.value;
+      slicePosRow.style.display = sliceAxis === 'off' ? 'none' : 'flex';
+      setupSlicePlane();
+    });
+
+    slicePosSlider.addEventListener('input', () => {
+      slicePosition = parseInt(slicePosSlider.value);
+      slicePosValue.textContent = slicePosition;
+      updateSlicePlanePosition();
+      updateSliceTexture();
+    });
+
+    // --- Camera Presets ---
+    document.getElementById('camFront').addEventListener('click', () => {
+      const offset = gridSize * 1.5;
+      camera.position.set(0, 0, offset);
+      camera.lookAt(worldCenter.x, worldCenter.y, worldCenter.z);
+      controls.target.set(worldCenter.x, worldCenter.y, worldCenter.z);
+      controls.update();
+    });
+
+    document.getElementById('camTop').addEventListener('click', () => {
+      const offset = gridSize * 1.5;
+      camera.position.set(0, offset, 0);
+      camera.lookAt(worldCenter.x, worldCenter.y, worldCenter.z);
+      controls.target.set(worldCenter.x, worldCenter.y, worldCenter.z);
+      controls.update();
+    });
+
+    document.getElementById('camCorner').addEventListener('click', () => {
+      const offset = gridSize * 1.2;
+      camera.position.set(offset, offset * 0.8, offset);
+      camera.lookAt(worldCenter.x, worldCenter.y, worldCenter.z);
+      controls.target.set(worldCenter.x, worldCenter.y, worldCenter.z);
+      controls.update();
+    });
+
+    // --- Speed Presets ---
+    function setSpeed(ms) {
+      frameInterval = ms;
+      speedSlider.value = ms;
+      speedValue.textContent = ms + 'ms';
+    }
+
+    document.getElementById('speedFast').addEventListener('click', () => setSpeed(50));
+    document.getElementById('speedNormal').addEventListener('click', () => setSpeed(200));
+    document.getElementById('speedSlow').addEventListener('click', () => setSpeed(500));
 
     // Animation loop
     function animate(currentTime) {
