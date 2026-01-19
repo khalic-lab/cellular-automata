@@ -2758,9 +2758,14 @@
       aliveMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       scene.add(aliveMesh);
 
-      // Mesh for decaying cells
+      // Mesh for decaying cells with per-instance colors
       decayMesh = new THREE.InstancedMesh(cubeGeometry, decayMaterial, maxInstances);
       decayMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      // Pre-initialize instanceColor buffer to avoid black cubes
+      decayMesh.instanceColor = new THREE.InstancedBufferAttribute(
+        new Float32Array(maxInstances * 3), 3
+      );
+      decayMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
       scene.add(decayMesh);
     }
 
@@ -2807,11 +2812,13 @@
       let aliveIndex = 0;
       let decayIndex = 0;
 
-      // Pre-compute decay colors for gradient effect
+      // Pre-compute decay colors for gradient effect (states 1 to maxState-1)
       const decayColors = [];
-      for (let s = 1; s < maxState; s++) {
+      for (let s = 1; s <= maxState; s++) {
         decayColors.push(getDecayColor(s, maxState));
       }
+      // Fallback color for any edge cases
+      const fallbackColor = new THREE.Color(1, 0.5, 0);
 
       // Direct array iteration - separate alive and decaying cells
       for (let idx = 0; idx < total; idx++) {
@@ -2836,8 +2843,12 @@
             // Decaying - gradient colors based on state
             if (decayIndex < maxInstances) {
               decayMesh.setMatrixAt(decayIndex, matrix);
-              // Set per-instance color based on decay state
-              decayMesh.setColorAt(decayIndex, decayColors[state - 1]);
+              // Set per-instance color based on decay state (with bounds check)
+              const colorIdx = state - 1;
+              const color = (colorIdx >= 0 && colorIdx < decayColors.length)
+                ? decayColors[colorIdx]
+                : fallbackColor;
+              decayMesh.setColorAt(decayIndex, color);
               decayIndex++;
             }
           }
