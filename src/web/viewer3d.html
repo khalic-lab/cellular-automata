@@ -2811,51 +2811,46 @@
       let aliveIndex = 0;
       let decayIndex = 0;
 
-      // For binary CA (maxState=1), use decayMesh for interior cells with darker color
-      const isBinaryCA = maxState === 1;
-      const interiorColor = new THREE.Color(0.2, 0.5, 0.5); // Dark teal for interior
+      // Colors for different cell types
+      const interiorAliveColor = new THREE.Color(0.0, 0.4, 0.4); // Dark cyan for interior alive
 
-      // Direct array iteration - separate alive and decaying cells
+      // Direct array iteration
       for (let idx = 0; idx < total; idx++) {
         const state = data[idx];
-        if (state) {
-          // Shell mode: skip interior cells entirely
-          if (displayMode === 'shell' && !isSurfaceCell(idx, data, size)) {
-            continue;
-          }
+        if (state === 0) continue; // Skip dead cells
 
-          const z = idx % size;
-          const y = ((idx / size) | 0) % size;
-          const x = (idx / size2) | 0;
-          matrix.setPosition(x + ox, y + oy, z + oz);
+        // Shell mode: skip interior cells entirely
+        const isSurface = isSurfaceCell(idx, data, size);
+        if (displayMode === 'shell' && !isSurface) {
+          continue;
+        }
 
-          const isSurface = isSurfaceCell(idx, data, size);
+        const z = idx % size;
+        const y = ((idx / size) | 0) % size;
+        const x = (idx / size2) | 0;
+        matrix.setPosition(x + ox, y + oy, z + oz);
 
-          if (isBinaryCA) {
-            // Binary CA: surface=cyan (aliveMesh), interior=dark teal (decayMesh)
-            if (isSurface) {
-              if (aliveIndex < maxInstances) {
-                aliveMesh.setMatrixAt(aliveIndex++, matrix);
-              }
-            } else {
-              if (decayIndex < maxInstances) {
-                decayMesh.setMatrixAt(decayIndex, matrix);
-                decayMesh.setColorAt(decayIndex, interiorColor);
-                decayIndex++;
-              }
-            }
-          } else if (state === maxState) {
-            // Multi-state: fully alive - cyan mesh
+        if (state === maxState) {
+          // Fully alive cell
+          if (isSurface) {
+            // Surface alive → bright cyan (aliveMesh)
             if (aliveIndex < maxInstances) {
               aliveMesh.setMatrixAt(aliveIndex++, matrix);
             }
           } else {
-            // Multi-state: decaying - gradient color based on state
+            // Interior alive → dark cyan (decayMesh)
             if (decayIndex < maxInstances) {
               decayMesh.setMatrixAt(decayIndex, matrix);
-              decayMesh.setColorAt(decayIndex, getDecayColor(state, maxState));
+              decayMesh.setColorAt(decayIndex, interiorAliveColor);
               decayIndex++;
             }
+          }
+        } else {
+          // Decaying cell (0 < state < maxState) → gradient color
+          if (decayIndex < maxInstances) {
+            decayMesh.setMatrixAt(decayIndex, matrix);
+            decayMesh.setColorAt(decayIndex, getDecayColor(state, maxState));
+            decayIndex++;
           }
         }
       }
