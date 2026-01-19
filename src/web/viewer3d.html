@@ -2811,11 +2811,15 @@
       let aliveIndex = 0;
       let decayIndex = 0;
 
+      // For binary CA (maxState=1), use decayMesh for interior cells with darker color
+      const isBinaryCA = maxState === 1;
+      const interiorColor = new THREE.Color(0.2, 0.5, 0.5); // Dark teal for interior
+
       // Direct array iteration - separate alive and decaying cells
       for (let idx = 0; idx < total; idx++) {
         const state = data[idx];
         if (state) {
-          // Shell mode: skip interior cells
+          // Shell mode: skip interior cells entirely
           if (displayMode === 'shell' && !isSurfaceCell(idx, data, size)) {
             continue;
           }
@@ -2825,13 +2829,28 @@
           const x = (idx / size2) | 0;
           matrix.setPosition(x + ox, y + oy, z + oz);
 
-          if (state === maxState) {
-            // Fully alive - cyan mesh
+          const isSurface = isSurfaceCell(idx, data, size);
+
+          if (isBinaryCA) {
+            // Binary CA: surface=cyan (aliveMesh), interior=dark teal (decayMesh)
+            if (isSurface) {
+              if (aliveIndex < maxInstances) {
+                aliveMesh.setMatrixAt(aliveIndex++, matrix);
+              }
+            } else {
+              if (decayIndex < maxInstances) {
+                decayMesh.setMatrixAt(decayIndex, matrix);
+                decayMesh.setColorAt(decayIndex, interiorColor);
+                decayIndex++;
+              }
+            }
+          } else if (state === maxState) {
+            // Multi-state: fully alive - cyan mesh
             if (aliveIndex < maxInstances) {
               aliveMesh.setMatrixAt(aliveIndex++, matrix);
             }
           } else {
-            // Decaying - gradient color based on state
+            // Multi-state: decaying - gradient color based on state
             if (decayIndex < maxInstances) {
               decayMesh.setMatrixAt(decayIndex, matrix);
               decayMesh.setColorAt(decayIndex, getDecayColor(state, maxState));
