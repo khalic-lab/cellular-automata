@@ -2181,14 +2181,14 @@
     let decayMesh = null;    // Decaying cells (0 < state < maxState)
     let gridHelper = null;
     const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
-    const aliveGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85); // Separate geometry for alive
-    const decayGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85); // Separate geometry for decay
     const aliveMaterial = new THREE.MeshLambertMaterial({ color: 0x00ffdd }); // Cyan for alive
+    // For InstancedMesh, instanceColor multiplies with material color (NOT vertexColors!)
+    // Use white base so instanceColor shows true colors
     const decayMaterial = new THREE.MeshLambertMaterial({
-      vertexColors: true,
+      color: 0xffffff,
       transparent: true,
       opacity: 0.8
-    }); // Per-instance gradient colors for decaying
+    });
 
     // State
     let gridSize = 20;
@@ -2757,20 +2757,14 @@
       const totalCells = gridSize * gridSize * gridSize;
       const maxInstances = Math.min(totalCells, MAX_RENDER_INSTANCES);
 
-      // Mesh for fully alive cells (uses separate geometry to avoid attribute bleeding)
-      aliveMesh = new THREE.InstancedMesh(aliveGeometry, aliveMaterial, maxInstances);
+      // Mesh for fully alive cells
+      aliveMesh = new THREE.InstancedMesh(cubeGeometry, aliveMaterial, maxInstances);
       aliveMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       scene.add(aliveMesh);
 
       // Mesh for decaying cells with per-instance gradient colors
-      decayMesh = new THREE.InstancedMesh(decayGeometry, decayMaterial, maxInstances);
+      decayMesh = new THREE.InstancedMesh(cubeGeometry, decayMaterial, maxInstances);
       decayMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      // Initialize instance colors - fill with orange as default
-      const defaultColor = new THREE.Color(1.0, 0.5, 0);
-      for (let i = 0; i < maxInstances; i++) {
-        decayMesh.setColorAt(i, defaultColor);
-      }
-      decayMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
       scene.add(decayMesh);
     }
 
@@ -2852,7 +2846,9 @@
 
       decayMesh.count = decayIndex;
       decayMesh.instanceMatrix.needsUpdate = true;
-      decayMesh.instanceColor.needsUpdate = true;
+      if (decayMesh.instanceColor) {
+        decayMesh.instanceColor.needsUpdate = true;
+      }
 
       // Update grid helper position
       if (gridHelper) {
