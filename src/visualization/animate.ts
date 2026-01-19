@@ -32,15 +32,12 @@ const ANSI = {
   clearLine: '\x1B[2K',
 } as const;
 
-// Console access - use type assertions to access Node.js globals
-type ProcessLike = { stdout?: { write: (s: string) => void } };
-type ConsoleLike = { log: (...args: unknown[]) => void };
+// Node.js globals declarations
+declare const process: { stdout?: { write: (s: string) => void } } | undefined;
+declare const console: { log: (...args: unknown[]) => void } | undefined;
 
-const getProcess = (): ProcessLike | undefined =>
-  typeof process !== 'undefined' ? (process as ProcessLike) : undefined;
-
-const getConsole = (): ConsoleLike | undefined =>
-  typeof console !== 'undefined' ? (console as ConsoleLike) : undefined;
+const getProcess = () => (typeof process !== 'undefined' ? process : undefined);
+const getConsole = () => (typeof console !== 'undefined' ? console : undefined);
 
 const write = (s: string) => {
   const proc = getProcess();

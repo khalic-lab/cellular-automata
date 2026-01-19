@@ -218,20 +218,21 @@
     <div class="control-group">
       <label>Rule Preset</label>
       <select id="preset">
-        <optgroup label="Stable">
-          <option value="amoeba" selected>Amoeba - Stable blobs</option>
-          <option value="coral">Coral - Grows then stabilizes</option>
-          <option value="builder">Builder - Stable structures</option>
-          <option value="crystal">Crystal - Crystal growth</option>
-          <option value="slow-decay">Slow Decay - Gradual fade</option>
+        <optgroup label="Growth">
+          <option value="amoeba" selected>Amoeba - Organic blobs</option>
+          <option value="crystal">Crystal - From tiny seed</option>
+          <option value="crystal2">Crystal 2 - Fractal growth</option>
+          <option value="builder">Builder - Structured</option>
+          <option value="spiky">Spiky - Sharp growth</option>
+          <option value="ripple">Ripple Cube - Waves</option>
+          <option value="coral">Coral - Branching</option>
+          <option value="pyroclastic">Pyroclastic - Explosive</option>
         </optgroup>
-        <optgroup label="Classic">
-          <option value="4/4">4/4 - Classic 3D</option>
-          <option value="5/5">5/5 - Simple</option>
-          <option value="4/5">4/5 - Growth</option>
-          <option value="5-7/6">5-7/6 - Complex</option>
-          <option value="6-7/5-6">6-7/5-6 - Slow</option>
-          <option value="conway">Conway 2D (flat)</option>
+        <optgroup label="Patterns">
+          <option value="445">445 - Symmetric</option>
+          <option value="678">678 - Organic</option>
+          <option value="clouds">Clouds - Diffuse</option>
+          <option value="slow-decay">Slow Decay - Dissolving</option>
         </optgroup>
       </select>
     </div>
@@ -291,12 +292,6 @@
       <label>Initial Density</label>
       <input type="range" id="density" min="0.1" max="1.0" value="0.5" step="0.05">
       <div class="slider-value" id="densityValue">50%</div>
-    </div>
-
-    <div class="control-group">
-      <label>Blob Radius</label>
-      <input type="range" id="blobRadius" min="0.1" max="1.0" value="0.25" step="0.05">
-      <div class="slider-value" id="blobRadiusValue">25%</div>
     </div>
 
     <div class="control-group">
@@ -401,9 +396,10 @@
       }
 
       countPopulation() {
+        // Count cells that are alive (state > 0) for multi-state CA
         let count = 0;
         for (let i = 0; i < this.size; i++) {
-          count += this.data[i];
+          if (this.data[i] > 0) count++;
         }
         return count;
       }
@@ -428,55 +424,73 @@
 
     // Spherical blob initialization (inspired by williamyang98/3D-Cellular-Automata)
     // Creates one or more spheres of random cells
-    function initializeBlob(grid, density, radius, numBlobs, { next }) {
+    // Initialize grid with a centered shape
+    // radiusCells: radius for sphere, or half side-length for cube (0 = fill entire grid)
+    // density: fraction of cells to fill (0-1)
+    // cellMaxState: the state value for alive cells (for multi-state CA)
+    // shape: 'sphere' (default) or 'cube'
+    // Position-based hash random (matches williamyang98's approach)
+    // Creates deterministic random values based on 3D position
+    function positionHash(x, y, z, seed) {
+      // Same magic numbers as williamyang98
+      const a = x * 12.9898 + y * 78.233 + z * 3.2345;
+      const b = Math.sin(a * seed) * 43758.5453;
+      return b - Math.floor(b); // fract()
+    }
+
+    function initializeBlob(grid, density, radiusCells, cellMaxState, { next }, shape = 'sphere') {
       const dims = grid.dimensions;
       const size = dims[0];
       const size2 = size * size;
-      const maxRadius = Math.min(...dims) / 2;
-      const actualRadius = radius * maxRadius;
-      const radiusSq = actualRadius * actualRadius;
 
       // Clear grid first
       grid.data.fill(0);
 
-      // Generate blob centers
-      const centers = [];
-      for (let b = 0; b < numBlobs; b++) {
-        if (b === 0) {
-          // First blob always at center
-          centers.push(dims.map(d => d / 2));
-        } else {
-          // Additional blobs at random positions (but not too close to edges)
-          const margin = actualRadius;
-          centers.push([
-            margin + next() * (dims[0] - 2 * margin),
-            margin + next() * (dims[1] - 2 * margin),
-            margin + next() * (dims[2] - 2 * margin)
-          ]);
+      // Center of grid
+      const center = dims.map(d => Math.floor(d / 2));
+
+      // Use a random seed for position-based hashing
+      const seed = next() * 1000 + 1;
+
+      // If radiusCells is 0, fill the entire grid with given density
+      if (radiusCells <= 0) {
+        for (let x = 0; x < dims[0]; x++) {
+          for (let y = 0; y < dims[1]; y++) {
+            for (let z = 0; z < dims[2]; z++) {
+              // Use position-based hash instead of sequential random
+              if (positionHash(x, y, z, seed) < density) {
+                const idx = x * size2 + y * size + z;
+                grid.data[idx] = cellMaxState;
+              }
+            }
+          }
         }
+        return;
       }
 
-      // Fill cells within any sphere
+      const radiusSq = radiusCells * radiusCells;
+
       for (let x = 0; x < dims[0]; x++) {
         for (let y = 0; y < dims[1]; y++) {
           for (let z = 0; z < dims[2]; z++) {
-            // Check distance to all blob centers
-            let inBlob = false;
-            for (const center of centers) {
-              const dx = x - center[0];
-              const dy = y - center[1];
-              const dz = z - center[2];
-              const distSq = dx * dx + dy * dy + dz * dz;
-              if (distSq <= radiusSq) {
-                inBlob = true;
-                break;
-              }
+            const dx = x - center[0];
+            const dy = y - center[1];
+            const dz = z - center[2];
+
+            let inRegion;
+            if (shape === 'cube') {
+              // Cube: check Chebyshev distance (max of abs distances)
+              inRegion = Math.abs(dx) <= radiusCells &&
+                         Math.abs(dy) <= radiusCells &&
+                         Math.abs(dz) <= radiusCells;
+            } else {
+              // Sphere: check Euclidean distance
+              inRegion = dx * dx + dy * dy + dz * dz <= radiusSq;
             }
 
-            // If within any sphere and passes density check
-            if (inBlob && next() < density) {
+            if (inRegion && positionHash(x, y, z, seed) < density) {
               const idx = x * size2 + y * size + z;
-              grid.data[idx] = 1;
+              grid.data[idx] = cellMaxState;
             }
           }
         }
@@ -635,11 +649,21 @@
     }
 
     // Optimized step function (Level 1+2 combined)
+    // Multi-state CA with decay (matching williamyang98 implementation):
+    // - Count neighbors that are FULLY alive (state == maxState) - NOT decaying cells!
+    // - Dead cell (state=0) + birth match -> maxState (born)
+    // - Alive cell (state=maxState) + survival match -> maxState (stays alive)
+    // - Alive cell (state=maxState) + no survival match -> maxState-1 (starts decay)
+    // - Refractory cell (0 < state < maxState) -> state-1 (continues decay)
     // neighborOffsets is a flat Int8Array: [ox0, oy0, oz0, ox1, oy1, oz1, ...]
-    function stepGridOptimized(currData, nextData, size, deltas, neighborOffsets, birth, survival) {
+    function stepGridOptimized(currData, nextData, size, deltas, neighborOffsets, birth, survival, maxState) {
       const size2 = size * size;
       const total = size * size2;
       const numNeighbors = deltas.length;
+
+      // Debug counters
+      let births = 0, deaths = 0, survives = 0, startedDecay = 0, continuedDecay = 0;
+      let neighborHist = new Array(27).fill(0); // neighbor count histogram for alive cells
 
       for (let idx = 0; idx < total; idx++) {
         const z = idx % size;
@@ -651,6 +675,8 @@
                        y === 0 || y === size - 1 ||
                        z === 0 || z === size - 1;
 
+        // Count FULLY ALIVE neighbors (state == maxState only!)
+        // Decaying/refractory cells do NOT count as neighbors
         let count = 0;
         if (isEdge) {
           // Slow path with coordinate-based wrapping using pre-computed offsets
@@ -663,17 +689,51 @@
             const ny = ((y + oy) % size + size) % size;
             const nz = ((z + oz) % size + size) % size;
 
-            count += currData[nx * size2 + ny * size + nz];
+            // Only count FULLY alive cells (at maxState)
+            if (currData[nx * size2 + ny * size + nz] === maxState) count++;
           }
         } else {
           // Fast path - direct index addition (no wrapping needed)
           for (let n = 0; n < numNeighbors; n++) {
-            count += currData[idx + deltas[n]];
+            // Only count FULLY alive cells (at maxState)
+            if (currData[idx + deltas[n]] === maxState) count++;
           }
         }
 
-        nextData[idx] = currData[idx] ? survival[count] : birth[count];
+        // Multi-state CA logic
+        const currState = currData[idx];
+        if (currState === 0) {
+          // Dead cell: birth if condition met
+          if (birth[count]) {
+            nextData[idx] = maxState;
+            births++;
+          } else {
+            nextData[idx] = 0;
+          }
+        } else if (currState === maxState) {
+          // Fully alive cell: check survival rule
+          neighborHist[count]++;
+          if (survival[count]) {
+            nextData[idx] = maxState;
+            survives++;
+          } else {
+            nextData[idx] = maxState - 1;
+            startedDecay++;
+          }
+        } else {
+          // Refractory cell (decaying): always continue decay
+          if (currState === 1) {
+            deaths++; // This cell will become 0 (dead)
+          }
+          continuedDecay++;
+          nextData[idx] = currState - 1;
+        }
       }
+
+      // Log transition summary
+      console.log(`  Transitions: births=${births}, survives=${survives}, startedDecay=${startedDecay}, continuedDecay=${continuedDecay}, deaths=${deaths}`);
+      const histStr = neighborHist.map((c, i) => c > 0 ? `${i}:${c}` : '').filter(s => s).join(' ');
+      console.log(`  Alive neighbor counts: [${histStr}]`);
     }
 
     // Convert neighborhood array to flat Int8Array of offsets
@@ -688,11 +748,13 @@
     }
 
     // --- Level 3: Web Worker ---
+    // Multi-state CA worker with decay support
     const workerCode = `
       let gridSize, size2, total;
       let currentData, nextData;
       let neighborDeltas, neighborOffsets;
       let birthLookup, survivalLookup;
+      let maxState = 15; // Default, updated on init
 
       self.onmessage = function(e) {
         const { type, payload } = e.data;
@@ -722,18 +784,21 @@
         neighborOffsets = new Int8Array(data.offsets);
         birthLookup = new Uint8Array(data.birth);
         survivalLookup = new Uint8Array(data.survival);
+        maxState = data.maxState || 15;
         self.postMessage({ type: 'ready' });
       }
 
       function resetGrid(data) {
         currentData = new Uint8Array(data.gridData);
         nextData = new Uint8Array(total);
+        if (data.maxState !== undefined) maxState = data.maxState;
         self.postMessage({ type: 'resetComplete' });
       }
 
       function updateRule(data) {
         birthLookup = new Uint8Array(data.birth);
         survivalLookup = new Uint8Array(data.survival);
+        if (data.maxState !== undefined) maxState = data.maxState;
         self.postMessage({ type: 'ruleUpdated' });
       }
 
@@ -746,6 +811,7 @@
         const survival = survivalLookup;
         const currData = currentData;
         const nxtData = nextData;
+        const mState = maxState;
 
         for (let idx = 0; idx < total; idx++) {
           const z = idx % size;
@@ -756,6 +822,7 @@
                          y === 0 || y === size - 1 ||
                          z === 0 || z === size - 1;
 
+          // Count FULLY ALIVE neighbors (state == maxState only!)
           let count = 0;
           if (isEdge) {
             // Slow path with coordinate-based wrapping
@@ -768,16 +835,27 @@
               const ny = ((y + oy) % size + size) % size;
               const nz = ((z + oz) % size + size) % size;
 
-              count += currData[nx * size2 + ny * size + nz];
+              if (currData[nx * size2 + ny * size + nz] === mState) count++;
             }
           } else {
             // Fast path - direct index addition
             for (let n = 0; n < numNeighbors; n++) {
-              count += currData[idx + deltas[n]];
+              if (currData[idx + deltas[n]] === mState) count++;
             }
           }
 
-          nxtData[idx] = currData[idx] ? survival[count] : birth[count];
+          // Multi-state CA logic
+          const currState = currData[idx];
+          if (currState === 0) {
+            // Dead cell: birth if condition met
+            nxtData[idx] = birth[count] ? mState : 0;
+          } else if (currState === mState) {
+            // Fully alive: check survival
+            nxtData[idx] = survival[count] ? mState : mState - 1;
+          } else {
+            // Refractory: always decay
+            nxtData[idx] = currState - 1;
+          }
         }
 
         // Swap buffers
@@ -1885,21 +1963,106 @@
     // ============================================================
 
     // Rule presets with initialization parameters
-    // Based on williamyang98/3D-Cellular-Automata system_entries.js
+    // Based on Softology's 3D Cellular Automata research
+    // Presets from williamyang98/3D-Cellular-Automata system_entries.js
+    // Format: S[survival]/B[birth]/[states]/M (Moore) or VN (von Neumann)
+    // Multi-state CA: cells decay through states when not surviving
+    // - Birth: dead cell (state=0) with matching neighbors -> max state
+    // - Survival: fully alive cell (state=maxState) with matching neighbors -> stays at max state
+    // - Decay: alive cell without survival match -> state decrements by 1
+    // - IMPORTANT: Only fully alive cells (state=maxState) count as neighbors!
     const RULE_PRESETS = {
-      // Stable presets - each has optimal init params (radius, density, blobs)
-      'amoeba': { birth: [6, 7, 8], survival: [5, 6, 7, 8], init: { radius: 0.3, density: 1.0, blobs: 5 } },
-      'coral': { birth: [6, 7, 8], survival: [4, 5, 6, 7, 8], init: { radius: 0.25, density: 1.0, blobs: 3 } },
-      'builder': { birth: [4], survival: [5, 6, 7], init: { radius: 0.35, density: 1.0, blobs: 5 } },
-      'crystal': { birth: [5, 6], survival: [5, 6, 7], init: { radius: 0.05, density: 1.0, blobs: 1 } },  // Tiny seed
-      'slow-decay': { birth: [4], survival: [3, 4, 5, 6], init: { radius: 0.4, density: 0.5, blobs: 1 } },
-      // Classic presets
-      '4/4': { birth: [4], survival: [4], init: { radius: 0.1, density: 1.0, blobs: 10 } },
-      '5/5': { birth: [5], survival: [5], init: { radius: 0.15, density: 1.0, blobs: 8 } },
-      '4/5': { birth: [4], survival: [5], init: { radius: 0.2, density: 1.0, blobs: 5 } },
-      '5-7/6': { birth: [5, 6, 7], survival: [6], init: { radius: 0.25, density: 1.0, blobs: 3 } },
-      '6-7/5-6': { birth: [6, 7], survival: [5, 6], init: { radius: 0.3, density: 1.0, blobs: 3 } },
-      'conway': { birth: [3], survival: [2, 3], init: { radius: 0.3, density: 0.5, blobs: 1 } }
+      'amoeba': {
+        // Amoeba-1: S9-26/B5-7,12-13,15/16/M
+        survival: [9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26],
+        birth: [5,6,7,12,13,15],
+        states: 16,
+        // Optimized for 20³: 0.5 gives ~80% survival (was 0.3 → 21%)
+        init: { radiusCells: 8, density: 0.5 }
+      },
+      '445': {
+        // 445: S4/B4/5/M - needs exactly 4 neighbors, low density optimal
+        survival: [4],
+        birth: [4],
+        states: 5,
+        init: { radiusCells: 15, density: 0.15 }
+      },
+      'builder': {
+        // Builder 2: S6,9/B4,6,8-9/10/M - needs 6 or 9 neighbors
+        survival: [6, 9],
+        birth: [4, 6, 8, 9],
+        states: 10,
+        init: { radiusCells: 7, density: 0.3 }
+      },
+      'crystal': {
+        // Crystal Growth 1: S0-6/B1,3/2/VN (von Neumann neighborhood)
+        survival: [0,1,2,3,4,5,6],
+        birth: [1, 3],
+        states: 2,
+        neighborhood: 'von-neumann',
+        init: { radiusCells: 1, density: 1.0 }
+      },
+      'crystal2': {
+        // Crystal Growth 2: S1-3/B1-3/5/VN (von Neumann neighborhood)
+        survival: [1, 2, 3],
+        birth: [1, 2, 3],
+        states: 5,
+        neighborhood: 'von-neumann',
+        init: { radiusCells: 1, density: 1.0 }
+      },
+      'clouds': {
+        // Clouds 1: S13-26/B13-14,17-19/2/M - full grid
+        // Optimized for 20³: 0.55 gives ~70% survival (was 0.5 → 56%)
+        survival: [13,14,15,16,17,18,19,20,21,22,23,24,25,26],
+        birth: [13,14,17,18,19],
+        states: 2,
+        init: { radiusCells: 0, density: 0.55 }
+      },
+      'slow-decay': {
+        // Slow Decay: S8,11,13-26/B13-26/5/M - full grid
+        // Optimized for 20³: 0.5 gives ~71% survival (was 0.45 → 45%)
+        survival: [8,11,13,14,15,16,17,18,19,20,21,22,23,24,25,26],
+        birth: [13,14,15,16,17,18,19,20,21,22,23,24,25,26],
+        states: 5,
+        init: { radiusCells: 0, density: 0.5 }
+      },
+      'spiky': {
+        // Spiky Growth 1: S7-26/B4,12-13,15/10/M
+        // Optimized for 20³: 0.4 gives ~72% survival (was 0.32 → 46%)
+        survival: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26],
+        birth: [4, 12, 13, 15],
+        states: 10,
+        init: { radiusCells: 7, density: 0.4 }
+      },
+      'ripple': {
+        // Ripple Cube: S8-26/B4,12-13,15/10/M (exact williamyang98)
+        // Higher density (0.5) creates denser initial cube for proper ripple wave patterns
+        survival: [8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26],
+        birth: [4, 12, 13, 15],
+        states: 10,
+        init: { radiusCells: 10, density: 0.5, shape: 'cube', recommendedGridSize: 50 }
+      },
+      'coral': {
+        // Coral: S5-8/B6-7,9,12/4/M - branching coral-like growth
+        survival: [5, 6, 7, 8],
+        birth: [6, 7, 9, 12],
+        states: 4,
+        init: { radiusCells: 6, density: 0.35 }
+      },
+      'pyroclastic': {
+        // Pyroclastic: S4-7/B6-8/10/M - needs 4-7 neighbors, ~59% at 0.2
+        survival: [4, 5, 6, 7],
+        birth: [6, 7, 8],
+        states: 10,
+        init: { radiusCells: 5, density: 0.2 }
+      },
+      '678': {
+        // 678 678: S6-8/B6-8/3/M - needs 6-8 neighbors, peaks at ~33%
+        survival: [6, 7, 8],
+        birth: [6, 7, 8],
+        states: 3,
+        init: { radiusCells: 5, density: 0.35 }
+      }
     };
 
     // ============================================================
@@ -1942,11 +2105,13 @@
     directionalLight2.position.set(-30, -30, 30);
     scene.add(directionalLight2);
 
-    // Instanced mesh for cubes
-    let instancedMesh = null;
+    // Instanced meshes for cubes - separate meshes for alive vs decaying
+    let aliveMesh = null;    // Fully alive cells (maxState)
+    let decayMesh = null;    // Decaying cells (0 < state < maxState)
     let gridHelper = null;
     const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
-    const cubeMaterial = new THREE.MeshLambertMaterial({ color: 0x00ff88 });
+    const aliveMaterial = new THREE.MeshLambertMaterial({ color: 0x00ffdd }); // Cyan for alive
+    const decayMaterial = new THREE.MeshLambertMaterial({ color: 0xff4400, transparent: true, opacity: 0.6 }); // Orange for decaying
 
     // State
     let gridSize = 20;
@@ -1959,8 +2124,8 @@
     let frameInterval = 200;
     let lastFrameTime = 0;
     let initialDensity = 0.5;
-    let blobRadius = 0.25;
     let maxGeneration = 0;
+    let maxState = 16; // Multi-state CA: cells have states 0 to maxState-1
 
     // Optimized CA state
     let neighborDeltas = null;
@@ -2010,15 +2175,13 @@
     const speedValue = document.getElementById('speedValue');
     const densitySlider = document.getElementById('density');
     const densityValue = document.getElementById('densityValue');
-    const blobRadiusSlider = document.getElementById('blobRadius');
-    const blobRadiusValue = document.getElementById('blobRadiusValue');
     const generationEl = document.getElementById('generation');
     const populationEl = document.getElementById('population');
     const densityStatEl = document.getElementById('densityStat');
     const maxGenEl = document.getElementById('maxGen');
 
     // Initialize simulation
-    // useSliderValues: if true, use current slider values instead of preset defaults
+    // useSliderValues: if true, use current slider density instead of preset default
     function initSimulation(useSliderValues = false) {
       // Create grids
       const dims = [gridSize, gridSize, gridSize];
@@ -2029,35 +2192,56 @@
       const preset = RULE_PRESETS[presetSelect.value];
       const initParams = preset.init;
 
-      // Determine init parameters: use slider values if overriding, otherwise preset
-      let density, radius, blobs;
+      // Set maxState from preset (states is count, so max value is states - 1)
+      maxState = preset.states - 1;
+
+      // Determine init parameters
+      // radiusCells is always from preset (absolute cell count, or 0 for whole grid)
+      const radiusCells = initParams.radiusCells;
+      let density;
+
       if (useSliderValues) {
-        // Manual override: use slider values
+        // Manual override: use slider density value
         density = initialDensity;
-        radius = blobRadius;
-        blobs = initParams.blobs; // Keep preset's blob count
       } else {
         // Use preset's optimal initialization
         density = initParams.density;
-        radius = initParams.radius;
-        blobs = initParams.blobs;
 
-        // Update sliders to reflect preset values
-        blobRadius = radius;
+        // Update density slider to reflect preset value
         initialDensity = density;
-        blobRadiusSlider.value = radius;
         densitySlider.value = density;
-        blobRadiusValue.textContent = formatDensity(radius);
         densityValue.textContent = formatDensity(density);
       }
 
-      // Initialize with spherical blob(s)
+      // Initialize with centered blob (sphere or cube depending on preset)
+      // Cells are initialized to maxState (fully alive)
       const rng = createRandom(Date.now());
-      initializeBlob(currentGrid, density, radius, blobs, rng);
+      const shape = initParams.shape || 'sphere';
+      initializeBlob(currentGrid, density, radiusCells, maxState, rng, shape);
 
-      // Generate neighborhood (Moore 3D)
-      neighborhood = generateNeighborhood(dims, { type: 'moore', range: 1 });
-      const maxNeighbors = getMaxNeighbors(dims, 'moore', 1);
+      // Debug: verify initialization
+      let initAtMax = 0, initOther = 0;
+      for (let i = 0; i < currentGrid.data.length; i++) {
+        if (currentGrid.data[i] === maxState) initAtMax++;
+        else if (currentGrid.data[i] > 0) initOther++;
+      }
+      console.log(`Init: ${initAtMax} cells at maxState=${maxState}, ${initOther} at other states, preset=${presetSelect.value}`);
+
+      // Also check what updateMesh will see
+      console.log(`Render check: maxState=${maxState}, sample cell values: ${currentGrid.data.slice(0,10).join(',')}`);
+
+      // Count what render will show
+      let willShowAlive = 0, willShowDecay = 0;
+      for (let i = 0; i < currentGrid.data.length; i++) {
+        if (currentGrid.data[i] === maxState) willShowAlive++;
+        else if (currentGrid.data[i] > 0) willShowDecay++;
+      }
+      console.log(`Render will show: ${willShowAlive} cyan (alive), ${willShowDecay} orange (decay)`);
+
+      // Generate neighborhood (Moore or von-Neumann from preset)
+      const neighborhoodType = preset.neighborhood || 'moore';
+      neighborhood = generateNeighborhood(dims, { type: neighborhoodType, range: 1 });
+      const maxNeighbors = getMaxNeighbors(dims, neighborhoodType, 1);
 
       // Create rule from preset
       rule = createRule(preset.birth, preset.survival, maxNeighbors);
@@ -2066,6 +2250,13 @@
       neighborDeltas = computeNeighborIndexDeltas(neighborhood, currentGrid.strides);
       neighborOffsets = createNeighborOffsets(neighborhood);
       ruleLookups = createRuleLookups(rule.birth, rule.survival, maxNeighbors);
+
+      // Debug: verify rule lookups
+      const surviveAt = [];
+      for (let i = 0; i <= maxNeighbors; i++) {
+        if (ruleLookups.survival[i]) surviveAt.push(i);
+      }
+      console.log(`Survival lookup: survives at [${surviveAt.join(',')}]`);
 
       // --- Level 3+4: Initialize compute backends with fallback ---
       initComputeBackends(preset);
@@ -2115,7 +2306,9 @@
 
       // Try GPU compute for large grids (100+) - GPU simulation + instanced mesh rendering
       // This is hybrid: GPU does CA math, but we sync to CPU for instanced mesh rendering
-      if (gridSize >= 100) {
+      // NOTE: GPU shaders only support binary CA (states=2), not multi-state with decay
+      const isMultiState = preset.states > 2;
+      if (gridSize >= 100 && !isMultiState) {
         try {
           fullGPU = new FullGPUPipeline(renderer);
           if (fullGPU.init(gridSize, preset.birth, preset.survival)) {
@@ -2134,7 +2327,8 @@
       }
 
       // Try WebGL compute for medium-large grids (50-99)
-      if (gridSize >= 50) {
+      // NOTE: WebGL shaders only support binary CA, not multi-state
+      if (gridSize >= 50 && !isMultiState) {
         try {
           webglCompute = new WebGLCACompute();
           if (webglCompute.init(gridSize, preset.birth, preset.survival)) {
@@ -2173,7 +2367,8 @@
               deltas: Array.from(neighborDeltas),
               offsets: Array.from(neighborOffsets),
               birth: Array.from(ruleLookups.birth),
-              survival: Array.from(ruleLookups.survival)
+              survival: Array.from(ruleLookups.survival),
+              maxState: maxState
             }
           });
 
@@ -2241,10 +2436,15 @@
     }
 
     function disposeRenderer() {
-      if (instancedMesh) {
-        scene.remove(instancedMesh);
-        instancedMesh.dispose();
-        instancedMesh = null;
+      if (aliveMesh) {
+        scene.remove(aliveMesh);
+        aliveMesh.dispose();
+        aliveMesh = null;
+      }
+      if (decayMesh) {
+        scene.remove(decayMesh);
+        decayMesh.dispose();
+        decayMesh = null;
       }
       if (volumeRenderer) {
         volumeRenderer.dispose();
@@ -2259,12 +2459,19 @@
     }
 
     function setupInstancedMesh() {
-      // Create new instanced mesh - cap at MAX_RENDER_INSTANCES to avoid memory issues
+      // Create instanced meshes - cap at MAX_RENDER_INSTANCES to avoid memory issues
       const totalCells = gridSize * gridSize * gridSize;
       const maxInstances = Math.min(totalCells, MAX_RENDER_INSTANCES);
-      instancedMesh = new THREE.InstancedMesh(cubeGeometry, cubeMaterial, maxInstances);
-      instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      scene.add(instancedMesh);
+
+      // Mesh for fully alive cells
+      aliveMesh = new THREE.InstancedMesh(cubeGeometry, aliveMaterial, maxInstances);
+      aliveMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      scene.add(aliveMesh);
+
+      // Mesh for decaying cells
+      decayMesh = new THREE.InstancedMesh(cubeGeometry, decayMaterial, maxInstances);
+      decayMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      scene.add(decayMesh);
     }
 
     function setupGridHelper() {
@@ -2295,7 +2502,7 @@
     }
 
     function updateMesh() {
-      if (!instancedMesh) return;
+      if (!aliveMesh || !decayMesh) return;
 
       const matrix = new THREE.Matrix4();
       const halfSize = gridSize / 2;
@@ -2307,21 +2514,37 @@
       const oy = worldCenter.y - halfSize + 0.5;
       const oz = worldCenter.z - halfSize + 0.5;
       const maxInstances = Math.min(total, MAX_RENDER_INSTANCES);
-      let instanceIndex = 0;
+      let aliveIndex = 0;
+      let decayIndex = 0;
 
-      // Direct array iteration - much faster than nested loops with get()
-      for (let idx = 0; idx < total && instanceIndex < maxInstances; idx++) {
-        if (data[idx]) {
+      // Direct array iteration - separate alive and decaying cells
+      for (let idx = 0; idx < total; idx++) {
+        const state = data[idx];
+        if (state) {
           const z = idx % size;
           const y = ((idx / size) | 0) % size;
           const x = (idx / size2) | 0;
           matrix.setPosition(x + ox, y + oy, z + oz);
-          instancedMesh.setMatrixAt(instanceIndex++, matrix);
+
+          if (state === maxState) {
+            // Fully alive - cyan mesh
+            if (aliveIndex < maxInstances) {
+              aliveMesh.setMatrixAt(aliveIndex++, matrix);
+            }
+          } else {
+            // Decaying - orange mesh
+            if (decayIndex < maxInstances) {
+              decayMesh.setMatrixAt(decayIndex++, matrix);
+            }
+          }
         }
       }
 
-      instancedMesh.count = instanceIndex;
-      instancedMesh.instanceMatrix.needsUpdate = true;
+      aliveMesh.count = aliveIndex;
+      aliveMesh.instanceMatrix.needsUpdate = true;
+
+      decayMesh.count = decayIndex;
+      decayMesh.instanceMatrix.needsUpdate = true;
 
       // Update grid helper position
       if (gridHelper) {
@@ -2334,6 +2557,15 @@
 
     function stepSimulation() {
       const t0 = performance.now();
+      const popBefore = currentGrid.countPopulation();
+      // Count state distribution
+      const stateCounts = new Array(maxState + 1).fill(0);
+      for (let i = 0; i < currentGrid.data.length; i++) {
+        stateCounts[currentGrid.data[i]]++;
+      }
+      const stateStr = stateCounts.map((c, i) => `s${i}:${c}`).filter(s => !s.endsWith(':0')).join(' ');
+      console.log(`=== Step ${generation} -> ${generation+1} (${computeMode}, maxState=${maxState}) ===`);
+      console.log(`Population before: ${popBefore}, states: [${stateStr}]`);
 
       // Use appropriate compute backend
       if (computeMode === 'fullgpu' && fullGPU && fullGPU.initialized) {
@@ -2374,7 +2606,8 @@
           neighborDeltas,
           neighborOffsets,
           ruleLookups.birth,
-          ruleLookups.survival
+          ruleLookups.survival,
+          maxState
         );
 
         // Swap grids
@@ -2387,6 +2620,11 @@
       }
 
       lastStepTime = performance.now() - t0;
+      const popAfter = currentGrid.countPopulation();
+      console.log(`Population after: ${popAfter} (delta: ${popAfter - popBefore})`);
+      if (Math.abs(popAfter - popBefore) > popBefore * 0.3) {
+        console.warn(`!!! LARGE POPULATION CHANGE: ${((popAfter - popBefore) / popBefore * 100).toFixed(1)}%`);
+      }
       updateStats();
     }
 
@@ -2424,9 +2662,9 @@
     }
 
     function updateStats() {
-      // Count population from instanced mesh count
-      if (instancedMesh) {
-        lastPopulation = instancedMesh.count;
+      // Count population from instanced mesh counts
+      if (aliveMesh && decayMesh) {
+        lastPopulation = aliveMesh.count + decayMesh.count;
       } else {
         lastPopulation = currentGrid.countPopulation();
       }
@@ -2484,7 +2722,7 @@
       } else if (computeMode === 'worker' && caWorker && workerReady) {
         caWorker.postMessage({
           type: 'reset',
-          payload: { gridData: Array.from(currentGrid.data) }
+          payload: { gridData: Array.from(currentGrid.data), maxState: maxState }
         });
       }
 
@@ -2557,9 +2795,31 @@
     centerZSlider.addEventListener('input', updateWorldCenter);
 
     presetSelect.addEventListener('change', () => {
-      const maxNeighbors = getMaxNeighbors([gridSize, gridSize, gridSize], 'moore', 1);
       const preset = RULE_PRESETS[presetSelect.value];
+      const initParams = preset.init;
+      const newMaxState = preset.states - 1;
+
+      // Check if preset has a recommended grid size OR different states count
+      // (different states requires reinitialization because cell values won't match)
+      if ((initParams.recommendedGridSize && gridSize < initParams.recommendedGridSize) ||
+          newMaxState !== maxState) {
+        // Update grid size if needed
+        if (initParams.recommendedGridSize && gridSize < initParams.recommendedGridSize) {
+          gridSize = initParams.recommendedGridSize;
+          gridSizeSelect.value = gridSize.toString();
+        }
+        // Full reinitialization
+        isPlaying = false;
+        playPauseBtn.textContent = 'Play';
+        initSimulation(false); // Use preset values
+        return;
+      }
+
+      const maxNeighbors = getMaxNeighbors([gridSize, gridSize, gridSize], 'moore', 1);
       rule = createRule(preset.birth, preset.survival, maxNeighbors);
+
+      // Update maxState from preset
+      maxState = preset.states - 1;
 
       // Update optimized rule lookups
       ruleLookups = createRuleLookups(rule.birth, rule.survival, maxNeighbors);
@@ -2574,18 +2834,15 @@
           type: 'setRule',
           payload: {
             birth: Array.from(ruleLookups.birth),
-            survival: Array.from(ruleLookups.survival)
+            survival: Array.from(ruleLookups.survival),
+            maxState: maxState
           }
         });
       }
 
-      // Update sliders to show preset's optimal init params (but don't reinitialize)
-      const initParams = preset.init;
-      blobRadius = initParams.radius;
+      // Update density slider to show preset's optimal value (but don't reinitialize)
       initialDensity = initParams.density;
-      blobRadiusSlider.value = initParams.radius;
       densitySlider.value = initParams.density;
-      blobRadiusValue.textContent = formatDensity(initParams.radius);
       densityValue.textContent = formatDensity(initParams.density);
     });
 
@@ -2616,18 +2873,6 @@
 
     densitySlider.addEventListener('input', () => {
       densityValue.textContent = formatDensity(parseFloat(densitySlider.value));
-    });
-
-    blobRadiusSlider.addEventListener('change', () => {
-      blobRadius = parseFloat(blobRadiusSlider.value);
-      blobRadiusValue.textContent = formatDensity(blobRadius);
-      isPlaying = false;
-      playPauseBtn.textContent = 'Play';
-      initSimulation(true); // Use slider values as override
-    });
-
-    blobRadiusSlider.addEventListener('input', () => {
-      blobRadiusValue.textContent = formatDensity(parseFloat(blobRadiusSlider.value));
     });
 
     // Window resize
@@ -2676,7 +2921,7 @@
       }),
 
       getRendererInfo: () => ({
-        meshCount: instancedMesh?.count ?? 0,
+        meshCount: (aliveMesh?.count ?? 0) + (decayMesh?.count ?? 0),
         isContextLost: renderer?.getContext()?.isContextLost() ?? true
       }),
 

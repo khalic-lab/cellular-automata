@@ -95,7 +95,7 @@ test.describe('3D Viewer - Page Load', () => {
     expect(state.generation).toBe(0);
     expect(state.isPlaying).toBe(false);
     expect(state.frameInterval).toBe(200); // Default speed
-    expect(state.initialDensity).toBeCloseTo(1.0, 2); // Amoeba preset uses 100% density
+    expect(state.initialDensity).toBeCloseTo(0.5, 2); // Amoeba preset uses 50% density
     expect(state.population).toBeGreaterThan(0); // Should have some cells
   });
 });
@@ -366,10 +366,10 @@ test.describe('3D Viewer - Rule Presets', () => {
     expect(initialPreset).toBe('amoeba');
 
     // Change preset
-    await page.selectOption('#preset', 'coral');
+    await page.selectOption('#preset', 'builder');
 
     const newPreset = await page.locator('#preset').inputValue();
-    expect(newPreset).toBe('coral');
+    expect(newPreset).toBe('builder');
   });
 
   test('changing preset does not reset generation', async ({ page }) => {
@@ -384,7 +384,7 @@ test.describe('3D Viewer - Rule Presets', () => {
     expect(beforeChange.generation).toBe(2);
 
     // Change preset
-    await page.selectOption('#preset', '5/5');
+    await page.selectOption('#preset', '445');
     await page.waitForTimeout(50);
 
     const afterChange = await getState(page);

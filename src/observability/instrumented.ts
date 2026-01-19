@@ -40,7 +40,8 @@ import type {
   StepTiming,
 } from './types.js';
 
-// Use performance API for timing (cross-platform)
+// Performance API declaration for cross-platform timing
+declare const performance: { now: () => number } | undefined;
 const perf = typeof performance !== 'undefined' ? performance : { now: () => Date.now() };
 
 /**

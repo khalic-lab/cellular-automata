@@ -11,10 +11,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:all": "vitest run && playwright test",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "life": "bun run src/cli/life.ts"
+    "life": "bun run src/cli/life.ts",
+    "view3d": "open src/web/viewer3d.html"
   },
   "keywords": [
     "cellular-automata",
@@ -28,7 +32,9 @@
   "license": "MIT",
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "^1.40.0",
     "@vitest/coverage-v8": "^2.1.8",
+    "serve": "^14.2.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.8"
   },
