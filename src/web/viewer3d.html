@@ -262,16 +262,27 @@
       <div style="margin-bottom:8px;">
         <input type="text" id="ruleName" placeholder="Rule name" style="width:100%; padding:6px; background:#1a1a2e; border:1px solid #3a3a5a; border-radius:4px; color:#e0e0e0;">
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
-        <div>
-          <span style="font-size:11px; color:#888;">Birth (e.g. 4,5,6)</span>
-          <input type="text" id="ruleBirth" placeholder="4,5,6" style="width:100%; padding:6px; background:#1a1a2e; border:1px solid #3a3a5a; border-radius:4px; color:#e0e0e0;">
-        </div>
-        <div>
-          <span style="font-size:11px; color:#888;">Survival (e.g. 2,3,4)</span>
-          <input type="text" id="ruleSurvival" placeholder="2,3,4" style="width:100%; padding:6px; background:#1a1a2e; border:1px solid #3a3a5a; border-radius:4px; color:#e0e0e0;">
-        </div>
+
+      <div style="font-size:10px; color:#555; margin-bottom:6px; text-align:center;">
+        Click neighbor counts (0-26) to toggle. Each cell has 26 neighbors in 3D.
       </div>
+
+      <div style="margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-size:11px; color:#00ff88;">Birth (dead → alive)</span>
+          <span id="birthSummary" style="font-size:10px; color:#666;"></span>
+        </div>
+        <div id="birthGrid"></div>
+      </div>
+
+      <div style="margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-size:11px; color:#00aaff;">Survival (alive → alive)</span>
+          <span id="survivalSummary" style="font-size:10px; color:#666;"></span>
+        </div>
+        <div id="survivalGrid"></div>
+      </div>
+
       <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px;">
         <div>
           <span style="font-size:11px; color:#888;">States</span>
@@ -2359,8 +2370,10 @@
     // Rule editor elements
     const ruleEditor = document.getElementById('ruleEditor');
     const ruleNameInput = document.getElementById('ruleName');
-    const ruleBirthInput = document.getElementById('ruleBirth');
-    const ruleSurvivalInput = document.getElementById('ruleSurvival');
+    const birthGrid = document.getElementById('birthGrid');
+    const survivalGrid = document.getElementById('survivalGrid');
+    const birthSummary = document.getElementById('birthSummary');
+    const survivalSummary = document.getElementById('survivalSummary');
     const ruleStatesInput = document.getElementById('ruleStates');
     const ruleInitDensityInput = document.getElementById('ruleInitDensity');
     const ruleInitRadiusInput = document.getElementById('ruleInitRadius');
@@ -2370,12 +2383,123 @@
     const savedRulesList = document.getElementById('savedRulesList');
     const customRulesGroup = document.getElementById('customRulesGroup');
 
+    // Visual rule editor state
+    const birthSet = new Set();
+    const survivalSet = new Set();
+
     // ============================================================
     // RULE EDITOR
     // ============================================================
 
     const STORAGE_KEY = 'ca3d_custom_rules';
     let currentCustomRuleName = null;
+    const MAX_NEIGHBORS = 26; // Moore neighborhood in 3D
+
+    // Create visual toggle grid with grouped rows
+    function createToggleGrid(container, set, color, summaryEl) {
+      container.innerHTML = '';
+
+      const groups = [
+        { label: 'Sparse', range: [0, 8], desc: '0-8' },
+        { label: 'Medium', range: [9, 17], desc: '9-17' },
+        { label: 'Dense', range: [18, 26], desc: '18-26' }
+      ];
+
+      groups.forEach(group => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; margin-bottom:3px;';
+
+        // Row label
+        const label = document.createElement('span');
+        label.textContent = group.label;
+        label.title = `${group.desc} neighbors alive`;
+        label.style.cssText = 'width:50px; font-size:9px; color:#555; flex-shrink:0;';
+        row.appendChild(label);
+
+        // Buttons container
+        const btns = document.createElement('div');
+        btns.style.cssText = 'display:flex; gap:2px; flex-wrap:wrap;';
+
+        for (let i = group.range[0]; i <= group.range[1]; i++) {
+          const btn = document.createElement('button');
+          btn.textContent = i;
+          btn.className = 'toggle-btn';
+          btn.dataset.value = i;
+          // Gradient background hint (darker = more neighbors)
+          const density = i / MAX_NEIGHBORS;
+          const hintColor = `rgba(255,255,255,${0.02 + density * 0.05})`;
+          btn.style.cssText = `
+            width: 22px; height: 22px; padding: 0; margin: 0;
+            font-size: 10px; font-weight: bold;
+            border: 1px solid #3a3a5a; border-radius: 3px;
+            cursor: pointer; transition: all 0.15s;
+            background: ${set.has(i) ? color : hintColor};
+            color: ${set.has(i) ? '#1a1a2e' : '#666'};
+          `;
+          btn.title = `${i} neighbors (${Math.round(i/26*100)}% surrounded)`;
+          btn.addEventListener('click', () => {
+            if (set.has(i)) {
+              set.delete(i);
+              btn.style.background = hintColor;
+              btn.style.color = '#666';
+            } else {
+              set.add(i);
+              btn.style.background = color;
+              btn.style.color = '#1a1a2e';
+            }
+            updateRuleSummary(set, summaryEl);
+          });
+          btns.appendChild(btn);
+        }
+
+        row.appendChild(btns);
+        container.appendChild(row);
+      });
+
+      updateRuleSummary(set, summaryEl);
+    }
+
+    function updateRuleSummary(set, summaryEl) {
+      const arr = [...set].sort((a, b) => a - b);
+      if (arr.length === 0) {
+        summaryEl.textContent = 'none';
+        return;
+      }
+      // Compress to ranges (e.g., [4,5,6,7,10] -> "4-7,10")
+      const ranges = [];
+      let start = arr[0], end = arr[0];
+      for (let i = 1; i <= arr.length; i++) {
+        if (i < arr.length && arr[i] === end + 1) {
+          end = arr[i];
+        } else {
+          ranges.push(start === end ? `${start}` : `${start}-${end}`);
+          if (i < arr.length) {
+            start = end = arr[i];
+          }
+        }
+      }
+      summaryEl.textContent = ranges.join(',');
+    }
+
+    function setGridValues(container, set, values, color, summaryEl) {
+      set.clear();
+      values.forEach(v => set.add(v));
+      // Update button states
+      const buttons = container.querySelectorAll('button');
+      buttons.forEach(btn => {
+        const v = parseInt(btn.dataset.value);
+        const active = set.has(v);
+        const density = v / MAX_NEIGHBORS;
+        const hintColor = `rgba(255,255,255,${0.02 + density * 0.05})`;
+        btn.style.background = active ? color : hintColor;
+        btn.style.color = active ? '#1a1a2e' : '#666';
+      });
+      updateRuleSummary(set, summaryEl);
+    }
+
+    // Initialize the visual grids
+    createToggleGrid(birthGrid, birthSet, '#00ff88', birthSummary);
+    createToggleGrid(survivalGrid, survivalSet, '#00aaff', survivalSummary);
 
     function loadSavedRules() {
       try {
@@ -2428,8 +2552,8 @@
 
       currentCustomRuleName = name;
       ruleNameInput.value = name;
-      ruleBirthInput.value = rule.birth.join(',');
-      ruleSurvivalInput.value = rule.survival.join(',');
+      setGridValues(birthGrid, birthSet, rule.birth, '#00ff88', birthSummary);
+      setGridValues(survivalGrid, survivalSet, rule.survival, '#00aaff', survivalSummary);
       ruleStatesInput.value = rule.states;
       ruleInitDensityInput.value = Math.round(rule.density * 100);
       ruleInitRadiusInput.value = rule.radius;
@@ -2453,14 +2577,14 @@
     }
 
     function applyCustomRule() {
-      const birth = parseNumberList(ruleBirthInput.value);
-      const survival = parseNumberList(ruleSurvivalInput.value);
+      const birth = [...birthSet].sort((a, b) => a - b);
+      const survival = [...survivalSet].sort((a, b) => a - b);
       const states = parseInt(ruleStatesInput.value) || 2;
       const density = (parseInt(ruleInitDensityInput.value) || 40) / 100;
       const radius = parseInt(ruleInitRadiusInput.value) || 7;
 
       if (birth.length === 0 && survival.length === 0) {
-        alert('Please enter at least one birth or survival value');
+        alert('Please select at least one birth or survival neighbor count');
         return;
       }
 
@@ -2509,8 +2633,8 @@
         return;
       }
 
-      const birth = parseNumberList(ruleBirthInput.value);
-      const survival = parseNumberList(ruleSurvivalInput.value);
+      const birth = [...birthSet].sort((a, b) => a - b);
+      const survival = [...survivalSet].sort((a, b) => a - b);
 
       const rules = loadSavedRules();
       rules[name] = {
