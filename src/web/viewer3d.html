@@ -227,6 +227,7 @@
       <label>Controls</label>
       <div class="control-row">
         <button id="playPause">Play</button>
+        <button id="stop" class="secondary">Stop</button>
         <button id="step" class="secondary">Step</button>
         <button id="reset" class="secondary">Reset</button>
       </div>
@@ -302,6 +303,11 @@
         <button id="ruleSave" class="secondary" style="flex:1; padding:6px;">Save</button>
         <button id="ruleDelete" class="secondary" style="flex:1; padding:6px;">Delete</button>
       </div>
+      <div class="control-row" style="margin-top:6px;">
+        <button id="ruleExport" class="secondary" style="flex:1; padding:6px; font-size:11px;">Export All</button>
+        <button id="ruleImport" class="secondary" style="flex:1; padding:6px; font-size:11px;">Import</button>
+      </div>
+      <input type="file" id="ruleImportFile" accept=".json" style="display:none;">
       <div id="savedRulesList" style="margin-top:8px; max-height:100px; overflow-y:auto;"></div>
     </div>
 
@@ -365,6 +371,19 @@
       <label>Initial Density</label>
       <input type="range" id="density" min="0.1" max="1.0" value="0.5" step="0.05">
       <div class="slider-value" id="densityValue">50%</div>
+    </div>
+
+    <div class="control-group">
+      <label>Starting Shape</label>
+      <select id="startShape">
+        <option value="sphere">Sphere</option>
+        <option value="cube">Cube</option>
+        <option value="tetrahedron">Tetrahedron</option>
+        <option value="octahedron">Octahedron</option>
+        <option value="dodecahedron">Dodecahedron</option>
+        <option value="icosahedron">Icosahedron</option>
+        <option value="noise">Random Noise (full grid)</option>
+      </select>
     </div>
 
     <div class="control-group">
@@ -594,6 +613,73 @@
       }
 
       const radiusSq = radiusCells * radiusCells;
+      const r = radiusCells;
+
+      // Platonic solid vertices (normalized to unit, scaled by radius)
+      const phi = (1 + Math.sqrt(5)) / 2; // Golden ratio
+
+      // Helper: check if point is inside convex hull defined by faces
+      function insideConvexHull(px, py, pz, faces, vertices) {
+        for (const face of faces) {
+          const v0 = vertices[face[0]];
+          const v1 = vertices[face[1]];
+          const v2 = vertices[face[2]];
+          // Compute face normal (pointing outward)
+          const e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+          const e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+          const n = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0]
+          ];
+          // Check if point is on outside (dot product with normal > 0 from face center)
+          const dot = (px - v0[0]) * n[0] + (py - v0[1]) * n[1] + (pz - v0[2]) * n[2];
+          if (dot > 0.001) return false;
+        }
+        return true;
+      }
+
+      // Tetrahedron vertices (inscribed in sphere of radius r)
+      const tetraVerts = [
+        [1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]
+      ].map(v => v.map(c => c * r / Math.sqrt(3)));
+      const tetraFaces = [[0,1,2], [0,2,3], [0,3,1], [1,3,2]];
+
+      // Octahedron vertices
+      const octaVerts = [
+        [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
+      ].map(v => v.map(c => c * r));
+      const octaFaces = [
+        [0,2,4], [0,4,3], [0,3,5], [0,5,2],
+        [1,4,2], [1,3,4], [1,5,3], [1,2,5]
+      ];
+
+      // Icosahedron vertices
+      const icosaVerts = [
+        [0, 1, phi], [0, -1, phi], [0, 1, -phi], [0, -1, -phi],
+        [1, phi, 0], [-1, phi, 0], [1, -phi, 0], [-1, -phi, 0],
+        [phi, 0, 1], [-phi, 0, 1], [phi, 0, -1], [-phi, 0, -1]
+      ].map(v => { const l = Math.sqrt(1 + phi*phi); return v.map(c => c * r / l); });
+      const icosaFaces = [
+        [0,1,8], [0,8,4], [0,4,5], [0,5,9], [0,9,1],
+        [1,6,8], [8,6,10], [8,10,4], [4,10,2], [4,2,5],
+        [5,2,11], [5,11,9], [9,11,7], [9,7,1], [1,7,6],
+        [3,6,7], [3,7,11], [3,11,2], [3,2,10], [3,10,6]
+      ];
+
+      // Dodecahedron vertices (dual of icosahedron - face centers)
+      const dodecaVerts = [
+        [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1],
+        [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1],
+        [0, phi, 1/phi], [0, phi, -1/phi], [0, -phi, 1/phi], [0, -phi, -1/phi],
+        [1/phi, 0, phi], [-1/phi, 0, phi], [1/phi, 0, -phi], [-1/phi, 0, -phi],
+        [phi, 1/phi, 0], [phi, -1/phi, 0], [-phi, 1/phi, 0], [-phi, -1/phi, 0]
+      ].map(v => { const l = Math.sqrt(3); return v.map(c => c * r / l); });
+      const dodecaFaces = [
+        [0,16,2,12,13], [0,13,4,8,16], [0,8,9,1,16], [1,9,5,15,14],
+        [1,14,3,17,16], [2,17,3,11,10], [2,10,6,13,12], [4,13,6,19,18],
+        [4,18,5,9,8], [5,18,19,7,15], [6,10,11,7,19], [3,14,15,7,11]
+      ].map(f => [f[0], f[1], f[2]]); // Triangulate pentagons (use first 3 verts for normal check)
 
       for (let x = 0; x < dims[0]; x++) {
         for (let y = 0; y < dims[1]; y++) {
@@ -604,12 +690,17 @@
 
             let inRegion;
             if (shape === 'cube') {
-              // Cube: check Chebyshev distance (max of abs distances)
-              inRegion = Math.abs(dx) <= radiusCells &&
-                         Math.abs(dy) <= radiusCells &&
-                         Math.abs(dz) <= radiusCells;
+              inRegion = Math.abs(dx) <= r && Math.abs(dy) <= r && Math.abs(dz) <= r;
+            } else if (shape === 'tetrahedron') {
+              inRegion = insideConvexHull(dx, dy, dz, tetraFaces, tetraVerts);
+            } else if (shape === 'octahedron') {
+              inRegion = insideConvexHull(dx, dy, dz, octaFaces, octaVerts);
+            } else if (shape === 'icosahedron') {
+              inRegion = insideConvexHull(dx, dy, dz, icosaFaces, icosaVerts);
+            } else if (shape === 'dodecahedron') {
+              inRegion = insideConvexHull(dx, dy, dz, dodecaFaces, dodecaVerts);
             } else {
-              // Sphere: check Euclidean distance
+              // Default: sphere
               inRegion = dx * dx + dy * dy + dz * dz <= radiusSq;
             }
 
@@ -2336,6 +2427,7 @@
 
     // DOM elements
     const playPauseBtn = document.getElementById('playPause');
+    const stopBtn = document.getElementById('stop');
     const stepBtn = document.getElementById('step');
     const timelineSlider = document.getElementById('timeline');
     const timelineValue = document.getElementById('timelineValue');
@@ -2352,6 +2444,7 @@
     const speedValue = document.getElementById('speedValue');
     const densitySlider = document.getElementById('density');
     const densityValue = document.getElementById('densityValue');
+    const startShapeSelect = document.getElementById('startShape');
     const generationEl = document.getElementById('generation');
     const populationEl = document.getElementById('population');
     const densityStatEl = document.getElementById('densityStat');
@@ -2380,6 +2473,9 @@
     const ruleApplyBtn = document.getElementById('ruleApply');
     const ruleSaveBtn = document.getElementById('ruleSave');
     const ruleDeleteBtn = document.getElementById('ruleDelete');
+    const ruleExportBtn = document.getElementById('ruleExport');
+    const ruleImportBtn = document.getElementById('ruleImport');
+    const ruleImportFile = document.getElementById('ruleImportFile');
     const savedRulesList = document.getElementById('savedRulesList');
     const customRulesGroup = document.getElementById('customRulesGroup');
 
@@ -2666,6 +2762,55 @@
       }
     }
 
+    function exportAllRules() {
+      const rules = loadSavedRules();
+      if (Object.keys(rules).length === 0) {
+        alert('No saved rules to export');
+        return;
+      }
+      const json = JSON.stringify(rules, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ca3d-rules.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importRules(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (typeof imported !== 'object') throw new Error('Invalid format');
+
+          const existing = loadSavedRules();
+          let count = 0;
+          for (const [name, rule] of Object.entries(imported)) {
+            // Validate rule structure
+            if (Array.isArray(rule.birth) && Array.isArray(rule.survival)) {
+              existing[name] = {
+                birth: rule.birth,
+                survival: rule.survival,
+                states: rule.states || 2,
+                density: rule.density || 0.4,
+                radius: rule.radius || 7
+              };
+              count++;
+            }
+          }
+          saveSavedRules(existing);
+          updateCustomRulesDropdown();
+          updateSavedRulesList();
+          alert(`Imported ${count} rule(s)`);
+        } catch (err) {
+          alert('Failed to import: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
     // Initialize rule editor
     updateCustomRulesDropdown();
     updateSavedRulesList();
@@ -2673,6 +2818,14 @@
     ruleApplyBtn.addEventListener('click', applyCustomRule);
     ruleSaveBtn.addEventListener('click', saveCustomRule);
     ruleDeleteBtn.addEventListener('click', deleteCustomRule);
+    ruleExportBtn.addEventListener('click', exportAllRules);
+    ruleImportBtn.addEventListener('click', () => ruleImportFile.click());
+    ruleImportFile.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        importRules(e.target.files[0]);
+        e.target.value = ''; // Reset for re-import
+      }
+    });
 
     // ============================================================
     // VISUALIZATION FEATURES
@@ -2897,24 +3050,30 @@
       const radiusCells = initParams.radiusCells;
       let density;
 
+      let shape;
+
       if (useSliderValues) {
-        // Manual override: use slider density value
+        // Manual override: use slider density and shape values
         density = initialDensity;
+        shape = startShapeSelect.value;
       } else {
         // Use preset's optimal initialization
         density = initParams.density;
+        shape = initParams.shape || 'sphere';
 
-        // Update density slider to reflect preset value
+        // Update UI to reflect preset values
         initialDensity = density;
         densitySlider.value = density;
         densityValue.textContent = formatDensity(density);
+        startShapeSelect.value = shape;
       }
 
-      // Initialize with centered blob (sphere or cube depending on preset)
+      // Initialize with centered blob (sphere, cube, or noise)
       // Cells are initialized to maxState (fully alive)
       const rng = createRandom(Date.now());
-      const shape = initParams.shape || 'sphere';
-      initializeBlob(currentGrid, density, radiusCells, maxState, rng, shape);
+      // 'noise' shape fills entire grid (radiusCells = 0)
+      const effectiveRadius = shape === 'noise' ? 0 : radiusCells;
+      initializeBlob(currentGrid, density, effectiveRadius, maxState, rng, shape);
 
       // Generate neighborhood (Moore or von-Neumann from preset)
       const neighborhoodType = preset.neighborhood || 'moore';
@@ -3428,15 +3587,20 @@
     // Event handlers
     playPauseBtn.addEventListener('click', () => {
       if (isPlaying) {
-        // If playing, reset the simulation (keep current slider values)
+        // Pause
         isPlaying = false;
         playPauseBtn.textContent = 'Play';
-        initSimulation(true);
       } else {
-        // If paused, start playing
+        // Start playing
         isPlaying = true;
-        playPauseBtn.textContent = 'Reset';
+        playPauseBtn.textContent = 'Pause';
       }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      // Stop (freeze) - just pause without resetting
+      isPlaying = false;
+      playPauseBtn.textContent = 'Play';
     });
 
     stepBtn.addEventListener('click', () => {
@@ -3448,7 +3612,7 @@
     resetBtn.addEventListener('click', () => {
       isPlaying = false;
       playPauseBtn.textContent = 'Play';
-      initSimulation(true); // Keep current slider values
+      initSimulation(false); // Reset with preset defaults
     });
 
     // Timeline control
@@ -3591,6 +3755,12 @@
 
     densitySlider.addEventListener('input', () => {
       densityValue.textContent = formatDensity(parseFloat(densitySlider.value));
+    });
+
+    startShapeSelect.addEventListener('change', () => {
+      isPlaying = false;
+      playPauseBtn.textContent = 'Play';
+      initSimulation(true); // Use slider values including new shape
     });
 
     // Window resize

@@ -226,10 +226,10 @@ test.describe('3D Viewer - UI Controls', () => {
     await expect(playBtn).toHaveText('Play');
 
     await playBtn.click();
-    await expect(playBtn).toHaveText('Reset'); // Now shows Reset when playing
+    await expect(playBtn).toHaveText('Pause'); // Shows Pause when playing
 
     await playBtn.click();
-    await expect(playBtn).toHaveText('Play'); // Clicking Reset stops and resets
+    await expect(playBtn).toHaveText('Play'); // Clicking Pause stops playback
   });
 
   test('step button does not work while playing', async ({ page }) => {
