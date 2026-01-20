@@ -91,11 +91,11 @@ test.describe('3D Viewer - Page Load', () => {
 
     const state = await getState(page);
 
-    expect(state.gridSize).toBe(100); // Default grid size
+    expect(state.gridSize).toBe(50); // Default grid size
     expect(state.generation).toBe(0);
     expect(state.isPlaying).toBe(false);
     expect(state.frameInterval).toBe(50); // Default speed
-    expect(state.initialDensity).toBeCloseTo(0.5, 2); // Amoeba preset uses 50% density
+    expect(state.initialDensity).toBeCloseTo(0.4, 2); // Spiky preset uses 40% density
     expect(state.population).toBeGreaterThan(0); // Should have some cells
   });
 });
@@ -267,14 +267,14 @@ test.describe('3D Viewer - UI Controls', () => {
 
     const beforeChange = await getState(page);
     expect(beforeChange.generation).toBe(2);
-    expect(beforeChange.gridSize).toBe(100);
+    expect(beforeChange.gridSize).toBe(50);
 
     // Change grid size
-    await page.selectOption('#gridSize', '50');
+    await page.selectOption('#gridSize', '30');
     await page.waitForTimeout(200);
 
     const afterChange = await getState(page);
-    expect(afterChange.gridSize).toBe(50);
+    expect(afterChange.gridSize).toBe(30);
     expect(afterChange.generation).toBe(0); // Should reset
     expect(afterChange.isPlaying).toBe(false);
   });
@@ -371,7 +371,7 @@ test.describe('3D Viewer - Rule Presets', () => {
 
     // Get initial preset value
     const initialPreset = await page.locator('#preset').inputValue();
-    expect(initialPreset).toBe('amoeba');
+    expect(initialPreset).toBe('spiky');
 
     // Change preset
     await page.selectOption('#preset', 'builder');

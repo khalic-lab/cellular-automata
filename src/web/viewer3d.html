@@ -236,11 +236,11 @@
       <label>Rule Preset</label>
       <select id="preset">
         <optgroup label="Growth">
-          <option value="amoeba" selected>Amoeba - Organic blobs</option>
+          <option value="amoeba">Amoeba - Organic blobs</option>
           <option value="crystal">Crystal - From tiny seed</option>
           <option value="crystal2">Crystal 2 - Fractal growth</option>
           <option value="builder">Builder - Structured</option>
-          <option value="spiky">Spiky - Sharp growth</option>
+          <option value="spiky" selected>Spiky - Sharp growth</option>
           <option value="ripple">Ripple Cube - Waves</option>
           <option value="coral">Coral - Branching</option>
           <option value="pyroclastic">Pyroclastic - Explosive</option>
@@ -262,9 +262,9 @@
         <option value="20">20 x 20 x 20</option>
         <option value="30">30 x 30 x 30</option>
         <option value="40">40 x 40 x 40</option>
-        <option value="50">50 x 50 x 50</option>
+        <option value="50" selected>50 x 50 x 50</option>
         <option value="75">75 x 75 x 75</option>
-        <option value="100" selected>100 x 100 x 100</option>
+        <option value="100">100 x 100 x 100</option>
         <option value="150">150 x 150 x 150</option>
         <option value="200">200 x 200 x 200</option>
         <option value="300">300 x 300 x 300</option>
@@ -2202,12 +2202,12 @@
     const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
     // BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z (6 faces, 4 verts each = 24 verts)
     const faceShades = [
-      0.7, 0.7, 0.7, 0.7,  // +X right - medium
-      0.5, 0.5, 0.5, 0.5,  // -X left - darker
+      0.8, 0.8, 0.8, 0.8,  // +X right - medium
+      0.6, 0.6, 0.6, 0.6,  // -X left - darker
       1.0, 1.0, 1.0, 1.0,  // +Y top - brightest
-      0.3, 0.3, 0.3, 0.3,  // -Y bottom - darkest
-      0.8, 0.8, 0.8, 0.8,  // +Z front - medium-bright
-      0.6, 0.6, 0.6, 0.6,  // -Z back - medium-dark
+      0.5, 0.5, 0.5, 0.5,  // -Y bottom - darkest
+      0.9, 0.9, 0.9, 0.9,  // +Z front - medium-bright
+      0.7, 0.7, 0.7, 0.7,  // -Z back - medium-dark
     ];
     const colors = new Float32Array(24 * 3);
     for (let i = 0; i < 24; i++) {
@@ -2219,7 +2219,7 @@
 
     // Surface alive - uses vertex colors for face shading
     const aliveMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00aa88,
+      color: 0x00ddaa,
       vertexColors: true
     });
     // Interior alive - very dark cyan
@@ -2240,7 +2240,7 @@
     });
 
     // State
-    let gridSize = 100;
+    let gridSize = 50;
     let currentGrid = null;
     let nextGrid = null;
     let rule = null;
