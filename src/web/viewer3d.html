@@ -2186,9 +2186,9 @@
 
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.2,   // bloom strength (subtle)
+      0,     // bloom strength (disabled)
       0.2,   // radius
-      0.8    // threshold (high = only brightest things bloom)
+      1.0    // threshold
     );
     composer.addPass(bloomPass);
 
@@ -2199,25 +2199,25 @@
     let gridHelper = null;
     const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
 
-    // Surface alive - muted cyan, flat shading
+    // Surface alive - dark cyan, flat shading
     const aliveMaterial = new THREE.MeshBasicMaterial({
-      color: 0x007766
+      color: 0x004433
     });
-    // Interior alive - dark cyan with subtle glow
+    // Interior alive - very dark cyan
     const interiorMaterial = new THREE.MeshLambertMaterial({
-      color: 0x003333,
-      emissive: 0x003333,
-      emissiveIntensity: 0.1,
+      color: 0x002222,
+      emissive: 0x001111,
+      emissiveIntensity: 0.05,
       transparent: true,
-      opacity: 0.4
+      opacity: 0.3
     });
-    // Decay material - warm gradient with orange glow
+    // Decay material - muted warm gradient
     const decayMaterial = new THREE.MeshLambertMaterial({
-      color: 0xffffff,
-      emissive: 0xff6600,
-      emissiveIntensity: 0.1,
+      color: 0x664422,
+      emissive: 0x331100,
+      emissiveIntensity: 0.05,
       transparent: true,
-      opacity: 0.4
+      opacity: 0.3
     });
 
     // State
