@@ -2199,9 +2199,12 @@
     let gridHelper = null;
     const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
 
-    // Surface alive - dark cyan with face shading
-    const aliveMaterial = new THREE.MeshLambertMaterial({
-      color: 0x006655
+    // Surface alive - dark cyan with flat face shading
+    const aliveMaterial = new THREE.MeshPhongMaterial({
+      color: 0x006655,
+      shininess: 30,
+      specular: 0x222222,
+      flatShading: true
     });
     // Interior alive - very dark cyan
     const interiorMaterial = new THREE.MeshLambertMaterial({
