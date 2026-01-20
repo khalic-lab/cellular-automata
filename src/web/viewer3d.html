@@ -2197,14 +2197,30 @@
     let interiorMesh = null;  // Interior alive cells (dark cyan)
     let decayMesh = null;     // Decaying cells (warm gradient)
     let gridHelper = null;
-    const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
 
-    // Surface alive - dark cyan with flat face shading
-    const aliveMaterial = new THREE.MeshPhongMaterial({
-      color: 0x006655,
-      shininess: 30,
-      specular: 0x222222,
-      flatShading: true
+    // Create box geometry with vertex colors for face distinction
+    const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
+    // BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z (6 faces, 4 verts each = 24 verts)
+    const faceShades = [
+      0.7, 0.7, 0.7, 0.7,  // +X right - medium
+      0.5, 0.5, 0.5, 0.5,  // -X left - darker
+      1.0, 1.0, 1.0, 1.0,  // +Y top - brightest
+      0.3, 0.3, 0.3, 0.3,  // -Y bottom - darkest
+      0.8, 0.8, 0.8, 0.8,  // +Z front - medium-bright
+      0.6, 0.6, 0.6, 0.6,  // -Z back - medium-dark
+    ];
+    const colors = new Float32Array(24 * 3);
+    for (let i = 0; i < 24; i++) {
+      colors[i * 3] = faceShades[i];     // R
+      colors[i * 3 + 1] = faceShades[i]; // G
+      colors[i * 3 + 2] = faceShades[i]; // B
+    }
+    cubeGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    // Surface alive - uses vertex colors for face shading
+    const aliveMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00aa88,
+      vertexColors: true
     });
     // Interior alive - very dark cyan
     const interiorMaterial = new THREE.MeshLambertMaterial({
