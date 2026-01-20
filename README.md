@@ -6,6 +6,17 @@ A zero-dependency TypeScript library for running cellular automata in arbitrary 
 
 The `src/web/viewer3d.html` provides an interactive 3D visualization using Three.js.
 
+### Visual Features
+
+- **Bloom glow effect** - Emissive materials with post-processing bloom
+- **Depth fog** - Cells fade with distance for depth perception
+- **Surface highlighting** - Surface cells bright, interior cells darker
+- **Multi-state decay** - Gradient coloring from yellow (near alive) to red (near dead)
+- **Shell mode** - View only surface cells
+- **Slice view** - 2D cross-section through the volume
+- **Population graph** - Sparkline showing population over time
+- **State distribution bar** - Visual breakdown of alive/decaying/dead cells
+
 ### Acknowledgments
 
 The 3D viewer is inspired by [williamyang98/3D-Cellular-Automata](https://github.com/williamyang98/3D-Cellular-Automata), an excellent WebGL-based 3D CA simulator. Rule names (Amoeba, Builder, Crystal, etc.) come from [Softology's 3D Cellular Automata research](https://softologyblog.wordpress.com/2019/12/28/3d-cellular-automata-3/).
@@ -330,4 +341,6 @@ bun test-example.ts
 
 ## License
 
-MIT
+This project is licensed under the [Creative Commons Attribution 4.0 International License (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/).
+
+You are free to share and adapt this work for any purpose, including commercial use, as long as you provide appropriate attribution.
