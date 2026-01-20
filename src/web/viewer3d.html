@@ -2324,13 +2324,15 @@
     let displayMode = 'all'; // 'all' | 'shell'
 
     function isSurfaceCell(idx, data, size) {
-      if (data[idx] === 0) return false;
+      const state = data[idx];
+      if (state === 0) return false;
       const size2 = size * size;
       const z = idx % size;
       const y = ((idx / size) | 0) % size;
       const x = (idx / size2) | 0;
 
       // Check 6 direct neighbors (von Neumann)
+      // Surface = has at least one neighbor that is less alive (lower state)
       const neighbors = [
         [x-1, y, z], [x+1, y, z],
         [x, y-1, z], [x, y+1, z],
@@ -2342,7 +2344,9 @@
         const wx = ((nx % size) + size) % size;
         const wy = ((ny % size) + size) % size;
         const wz = ((nz % size) + size) % size;
-        if (data[wx * size2 + wy * size + wz] === 0) return true;
+        const neighborState = data[wx * size2 + wy * size + wz];
+        // Surface if neighbor is dead OR has lower state (more decayed)
+        if (neighborState < state) return true;
       }
       return false;
     }
