@@ -91,10 +91,10 @@ test.describe('3D Viewer - Page Load', () => {
 
     const state = await getState(page);
 
-    expect(state.gridSize).toBe(20); // Default grid size
+    expect(state.gridSize).toBe(100); // Default grid size
     expect(state.generation).toBe(0);
     expect(state.isPlaying).toBe(false);
-    expect(state.frameInterval).toBe(200); // Default speed
+    expect(state.frameInterval).toBe(50); // Default speed
     expect(state.initialDensity).toBeCloseTo(0.5, 2); // Amoeba preset uses 50% density
     expect(state.population).toBeGreaterThan(0); // Should have some cells
   });
@@ -147,7 +147,7 @@ test.describe('3D Viewer - Rendering', () => {
     // Run multiple steps
     for (let i = 0; i < 5; i++) {
       await page.click('#step');
-      await page.waitForTimeout(50);
+      await page.waitForTimeout(500); // Wait for async worker at 100³
 
       const state = await getState(page);
       const renderer = await getRendererInfo(page);
@@ -167,6 +167,7 @@ test.describe('3D Viewer - UI Controls', () => {
     expect(initialState.generation).toBe(0);
 
     await page.click('#step');
+    await page.waitForTimeout(500); // Wait for async worker
 
     const afterState = await getState(page);
     expect(afterState.generation).toBe(1);
@@ -176,10 +177,13 @@ test.describe('3D Viewer - UI Controls', () => {
     await page.goto('/viewer3d.html');
     await waitForTestInterface(page);
 
-    // Step a few times
+    // Step a few times (with waits for async worker)
     await page.click('#step');
+    await page.waitForTimeout(500);
     await page.click('#step');
+    await page.waitForTimeout(500);
     await page.click('#step');
+    await page.waitForTimeout(500);
 
     const afterSteps = await getState(page);
     expect(afterSteps.generation).toBe(3);
@@ -255,20 +259,22 @@ test.describe('3D Viewer - UI Controls', () => {
     await page.goto('/viewer3d.html');
     await waitForTestInterface(page);
 
-    // Step a few times
+    // Step a few times (with waits for async worker)
     await page.click('#step');
+    await page.waitForTimeout(500);
     await page.click('#step');
+    await page.waitForTimeout(500);
 
     const beforeChange = await getState(page);
     expect(beforeChange.generation).toBe(2);
-    expect(beforeChange.gridSize).toBe(20);
+    expect(beforeChange.gridSize).toBe(100);
 
     // Change grid size
-    await page.selectOption('#gridSize', '15');
+    await page.selectOption('#gridSize', '50');
     await page.waitForTimeout(200);
 
     const afterChange = await getState(page);
-    expect(afterChange.gridSize).toBe(15);
+    expect(afterChange.gridSize).toBe(50);
     expect(afterChange.generation).toBe(0); // Should reset
     expect(afterChange.isPlaying).toBe(false);
   });
@@ -278,7 +284,7 @@ test.describe('3D Viewer - UI Controls', () => {
     await waitForTestInterface(page);
 
     const initialState = await getState(page);
-    expect(initialState.frameInterval).toBe(200);
+    expect(initialState.frameInterval).toBe(50);
 
     // Change speed to 500ms - use evaluate for range input
     await page.evaluate(() => {
@@ -298,9 +304,11 @@ test.describe('3D Viewer - UI Controls', () => {
     await page.goto('/viewer3d.html');
     await waitForTestInterface(page);
 
-    // Step a few times first
+    // Step a few times first (with waits for async worker)
     await page.click('#step');
+    await page.waitForTimeout(500);
     await page.click('#step');
+    await page.waitForTimeout(500);
 
     const beforeChange = await getState(page);
     expect(beforeChange.generation).toBe(2);
@@ -408,12 +416,12 @@ test.describe('3D Viewer - Auto-play', () => {
     // Start playing
     await page.click('#playPause');
 
-    // Wait for a few frames (default interval is 200ms)
-    await page.waitForTimeout(700);
+    // Wait for a few frames (at 100³ with worker, each step takes ~300-500ms)
+    await page.waitForTimeout(2000);
 
     // Check generation before stopping (clicking playPause now resets)
     const afterPlay = await getState(page);
-    // Should have advanced at least 2-3 generations in 700ms with 200ms interval
+    // Should have advanced at least 2 generations in 2000ms at 100³
     expect(afterPlay.generation).toBeGreaterThanOrEqual(2);
 
     // Now click to reset (stop + reset)
@@ -450,7 +458,7 @@ test.describe('3D Viewer - Test Interface Actions', () => {
     await waitForTestInterface(page);
 
     await page.evaluate(() => window.__CA_TEST__.actions.step());
-    await page.waitForTimeout(50);
+    await page.waitForTimeout(500); // Wait for async worker at 100³
 
     const state = await getState(page);
     expect(state.generation).toBe(1);
@@ -460,13 +468,15 @@ test.describe('3D Viewer - Test Interface Actions', () => {
     await page.goto('/viewer3d.html');
     await waitForTestInterface(page);
 
-    // Step first
+    // Step first (with waits for async worker)
     await page.evaluate(() => window.__CA_TEST__.actions.step());
+    await page.waitForTimeout(500);
     await page.evaluate(() => window.__CA_TEST__.actions.step());
+    await page.waitForTimeout(500);
 
     // Reset via test interface
     await page.evaluate(() => window.__CA_TEST__.actions.reset());
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(200);
 
     const state = await getState(page);
     expect(state.generation).toBe(0);

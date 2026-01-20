@@ -259,12 +259,12 @@
       <select id="gridSize">
         <option value="10">10 x 10 x 10</option>
         <option value="15">15 x 15 x 15</option>
-        <option value="20" selected>20 x 20 x 20</option>
+        <option value="20">20 x 20 x 20</option>
         <option value="30">30 x 30 x 30</option>
         <option value="40">40 x 40 x 40</option>
         <option value="50">50 x 50 x 50</option>
         <option value="75">75 x 75 x 75</option>
-        <option value="100">100 x 100 x 100</option>
+        <option value="100" selected>100 x 100 x 100</option>
         <option value="150">150 x 150 x 150</option>
         <option value="200">200 x 200 x 200</option>
         <option value="300">300 x 300 x 300</option>
@@ -301,8 +301,8 @@
 
     <div class="control-group">
       <label>Speed (ms/frame)</label>
-      <input type="range" id="speed" min="50" max="1000" value="200" step="50">
-      <div class="slider-value" id="speedValue">200ms</div>
+      <input type="range" id="speed" min="50" max="1000" value="50" step="50">
+      <div class="slider-value" id="speedValue">50ms</div>
       <div class="control-row" style="margin-top:8px">
         <button class="secondary" id="speedFast" style="flex:1;padding:6px">Fast</button>
         <button class="secondary" id="speedNormal" style="flex:1;padding:6px">Normal</button>
@@ -735,10 +735,6 @@
       const total = size * size2;
       const numNeighbors = deltas.length;
 
-      // Debug counters
-      let births = 0, deaths = 0, survives = 0, startedDecay = 0, continuedDecay = 0;
-      let neighborHist = new Array(27).fill(0); // neighbor count histogram for alive cells
-
       for (let idx = 0; idx < total; idx++) {
         const z = idx % size;
         const y = ((idx / size) | 0) % size;
@@ -778,36 +774,15 @@
         const currState = currData[idx];
         if (currState === 0) {
           // Dead cell: birth if condition met
-          if (birth[count]) {
-            nextData[idx] = maxState;
-            births++;
-          } else {
-            nextData[idx] = 0;
-          }
+          nextData[idx] = birth[count] ? maxState : 0;
         } else if (currState === maxState) {
           // Fully alive cell: check survival rule
-          neighborHist[count]++;
-          if (survival[count]) {
-            nextData[idx] = maxState;
-            survives++;
-          } else {
-            nextData[idx] = maxState - 1;
-            startedDecay++;
-          }
+          nextData[idx] = survival[count] ? maxState : maxState - 1;
         } else {
           // Refractory cell (decaying): always continue decay
-          if (currState === 1) {
-            deaths++; // This cell will become 0 (dead)
-          }
-          continuedDecay++;
           nextData[idx] = currState - 1;
         }
       }
-
-      // Log transition summary
-      console.log(`  Transitions: births=${births}, survives=${survives}, startedDecay=${startedDecay}, continuedDecay=${continuedDecay}, deaths=${deaths}`);
-      const histStr = neighborHist.map((c, i) => c > 0 ? `${i}:${c}` : '').filter(s => s).join(' ');
-      console.log(`  Alive neighbor counts: [${histStr}]`);
     }
 
     // Convert neighborhood array to flat Int8Array of offsets
@@ -967,6 +942,7 @@
       uniform int uTexWidth;
       uniform int uBirthMask;
       uniform int uSurvivalMask;
+      uniform int uMaxState;
 
       in vec2 vTexCoord;
       out vec4 fragColor;
@@ -977,20 +953,22 @@
         return ivec2(linearIdx % texWidth, linearIdx / texWidth);
       }
 
-      // Get cell state at wrapped 3D position
-      float getCell(ivec3 pos, int size, int texWidth) {
+      // Get cell state at wrapped 3D position (returns 0 to maxState as int)
+      int getCell(ivec3 pos, int size, int texWidth, int maxState) {
         ivec3 wrapped = ivec3(
           (pos.x % size + size) % size,
           (pos.y % size + size) % size,
           (pos.z % size + size) % size
         );
         ivec2 texPos = gridToTex(wrapped, size, texWidth);
-        return texelFetch(uState, texPos, 0).r;
+        float val = texelFetch(uState, texPos, 0).r;
+        return int(val * float(maxState) + 0.5);
       }
 
       void main() {
         int size = uGridSize;
         int texWidth = uTexWidth;
+        int maxState = uMaxState;
 
         // Convert texture coordinate to linear index
         ivec2 texPos = ivec2(gl_FragCoord.xy);
@@ -1009,27 +987,39 @@
         int x = linearIdx / (size * size);
         ivec3 pos = ivec3(x, y, z);
 
-        // Count neighbors (Moore neighborhood)
+        // Count FULLY ALIVE neighbors (Moore neighborhood)
+        // Only cells at maxState count as neighbors
         int count = 0;
         for (int dx = -1; dx <= 1; dx++) {
           for (int dy = -1; dy <= 1; dy++) {
             for (int dz = -1; dz <= 1; dz++) {
               if (dx == 0 && dy == 0 && dz == 0) continue;
-              count += int(getCell(pos + ivec3(dx, dy, dz), size, texWidth) > 0.5);
+              int neighborState = getCell(pos + ivec3(dx, dy, dz), size, texWidth, maxState);
+              if (neighborState == maxState) count++;
             }
           }
         }
 
-        // Apply rules using bit masks
-        float current = getCell(pos, size, texWidth);
-        bool alive;
-        if (current > 0.5) {
-          alive = ((uSurvivalMask >> count) & 1) == 1;
+        // Multi-state CA rules
+        int current = getCell(pos, size, texWidth, maxState);
+        int nextState;
+
+        if (current == 0) {
+          // Dead cell: birth if condition met
+          bool birth = ((uBirthMask >> count) & 1) == 1;
+          nextState = birth ? maxState : 0;
+        } else if (current == maxState) {
+          // Fully alive: check survival
+          bool survive = ((uSurvivalMask >> count) & 1) == 1;
+          nextState = survive ? maxState : maxState - 1;
         } else {
-          alive = ((uBirthMask >> count) & 1) == 1;
+          // Decaying: continue decay
+          nextState = current - 1;
         }
 
-        fragColor = vec4(alive ? 1.0 : 0.0, 0.0, 0.0, 1.0);
+        // Output normalized state (0 to 1)
+        float outVal = float(nextState) / float(maxState);
+        fragColor = vec4(outVal, 0.0, 0.0, 1.0);
       }
     `;
 
@@ -1041,22 +1031,23 @@
         this.gridSize = 0;
         this.texWidth = 0;
         this.texHeight = 0;
+        this.maxState = 1;
         this.program = null;
         this.textures = [null, null];
         this.framebuffers = [null, null];
         this.currentTexIndex = 0;
       }
 
-      init(gridSize, birthSet, survivalSet) {
+      init(gridSize, birthSet, survivalSet, maxState = 1) {
         const gl = this.gl;
         if (!gl) return false;
 
         this.gridSize = gridSize;
+        this.maxState = maxState;
         const total = gridSize * gridSize * gridSize;
 
         // Query GPU texture size limit
         const maxTexSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-        console.log(`WebGL max texture size: ${maxTexSize}`);
 
         // Calculate texture dimensions (power of 2 width for better performance)
         this.texWidth = Math.min(maxTexSize, Math.pow(2, Math.ceil(Math.log2(Math.sqrt(total)))));
@@ -1098,6 +1089,7 @@
         gl.useProgram(this.program);
         gl.uniform1i(gl.getUniformLocation(this.program, 'uGridSize'), gridSize);
         gl.uniform1i(gl.getUniformLocation(this.program, 'uTexWidth'), this.texWidth);
+        gl.uniform1i(gl.getUniformLocation(this.program, 'uMaxState'), maxState);
 
         this.setRule(birthSet, survivalSet);
 
@@ -1161,14 +1153,24 @@
         gl.uniform1i(gl.getUniformLocation(this.program, 'uSurvivalMask'), survivalMask);
       }
 
+      setMaxState(maxState) {
+        const gl = this.gl;
+        this.maxState = maxState;
+        if (!this.program) return;
+        gl.useProgram(this.program);
+        gl.uniform1i(gl.getUniformLocation(this.program, 'uMaxState'), maxState);
+      }
+
       uploadGrid(gridData) {
         const gl = this.gl;
         const total = this.gridSize * this.gridSize * this.gridSize;
+        const maxState = this.maxState;
 
-        // Pad data to texture size
+        // Pad data to texture size, normalize state to 0-255 range
         const texData = new Uint8Array(this.texWidth * this.texHeight);
         for (let i = 0; i < total; i++) {
-          texData[i] = gridData[i] * 255;
+          // state/maxState * 255 for proper normalization
+          texData[i] = Math.round((gridData[i] / maxState) * 255);
         }
 
         gl.bindTexture(gl.TEXTURE_2D, this.textures[this.currentTexIndex]);
@@ -1195,14 +1197,16 @@
       readGrid(targetData) {
         const gl = this.gl;
         const total = this.gridSize * this.gridSize * this.gridSize;
+        const maxState = this.maxState;
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[this.currentTexIndex]);
         const texData = new Uint8Array(this.texWidth * this.texHeight * 4);
         gl.readPixels(0, 0, this.texWidth, this.texHeight, gl.RGBA, gl.UNSIGNED_BYTE, texData);
 
-        // Extract red channel
+        // Extract red channel and denormalize to state value
         for (let i = 0; i < total; i++) {
-          targetData[i] = texData[i * 4] > 127 ? 1 : 0;
+          // Convert from 0-255 back to 0-maxState
+          targetData[i] = Math.round((texData[i * 4] / 255) * maxState);
         }
       }
 
@@ -1350,7 +1354,6 @@
           console.error('Failed to compile ray march program');
           return false;
         }
-        console.log('Ray march program compiled successfully');
 
         // Create fullscreen quad VAO (for CA compute)
         this.quadVAO = gl.createVertexArray();
@@ -1367,7 +1370,6 @@
         this.createBoxVAO();
 
         this.initialized = true;
-        console.log(`Full GPU pipeline initialized for ${gridSize}³`);
         return true;
       }
 
@@ -1446,8 +1448,6 @@
 
         gl.bindVertexArray(null);
         this.boxIndexCount = indices.length;
-
-        console.log('Box VAO created with', this.boxIndexCount, 'indices');
       }
 
       uploadInitialState(gridData) {
@@ -1929,7 +1929,6 @@
 
         // Check max 3D texture size
         const max3DSize = this.gl.getParameter(this.gl.MAX_3D_TEXTURE_SIZE);
-        console.log(`Max 3D texture size: ${max3DSize}`);
 
         if (gridSize > max3DSize) {
           console.warn(`Grid size ${gridSize} exceeds max 3D texture size ${max3DSize}`);
@@ -1962,7 +1961,6 @@
           transparent: false,
           depthWrite: true
         });
-        console.log(`Ray march step scale: ${stepScale} for ${gridSize}³`);
 
         this.volumeMesh = new THREE.Mesh(geometry, this.material);
         this.volumeMesh.onBeforeRender = () => {
@@ -2188,18 +2186,20 @@
 
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.8,   // bloom strength
-      0.4,   // radius
-      0.2    // threshold (lower = more bloom)
+      0.5,   // bloom strength
+      0.3,   // radius
+      0.4    // threshold (higher = less bloom)
     );
     composer.addPass(bloomPass);
 
-    // Instanced meshes for cubes - separate meshes for alive vs decaying
-    let aliveMesh = null;    // Fully alive cells (maxState)
-    let decayMesh = null;    // Decaying cells (0 < state < maxState)
+    // Instanced meshes for cubes - three types for proper emissive colors
+    let aliveMesh = null;     // Surface alive cells (bright cyan)
+    let interiorMesh = null;  // Interior alive cells (dark cyan)
+    let decayMesh = null;     // Decaying cells (warm gradient)
     let gridHelper = null;
     const cubeGeometry = new THREE.BoxGeometry(0.85, 0.85, 0.85);
-    // Emissive materials for bloom glow effect
+
+    // Surface alive - bright cyan with strong glow
     const aliveMaterial = new THREE.MeshStandardMaterial({
       color: 0x00ffdd,
       emissive: 0x00ffdd,
@@ -2207,26 +2207,36 @@
       roughness: 0.3,
       metalness: 0.1
     });
-    // Decay material - instanceColor multiplies with material color
-    const decayMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      emissive: 0xffffff,
-      emissiveIntensity: 0.4,
-      roughness: 0.4,
+    // Interior alive - dark cyan with subtle glow
+    const interiorMaterial = new THREE.MeshStandardMaterial({
+      color: 0x004444,
+      emissive: 0x004444,
+      emissiveIntensity: 0.1,
+      roughness: 0.7,
       metalness: 0.0,
       transparent: true,
-      opacity: 0.85
+      opacity: 0.5
+    });
+    // Decay material - warm gradient with orange glow
+    const decayMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0xff6600,
+      emissiveIntensity: 0.15,
+      roughness: 0.8,
+      metalness: 0.0,
+      transparent: true,
+      opacity: 0.5
     });
 
     // State
-    let gridSize = 20;
+    let gridSize = 100;
     let currentGrid = null;
     let nextGrid = null;
     let rule = null;
     let neighborhood = null;
     let generation = 0;
     let isPlaying = false;
-    let frameInterval = 200;
+    let frameInterval = 50;
     let lastFrameTime = 0;
     let initialDensity = 0.5;
     let maxGeneration = 0;
@@ -2533,25 +2543,6 @@
       const shape = initParams.shape || 'sphere';
       initializeBlob(currentGrid, density, radiusCells, maxState, rng, shape);
 
-      // Debug: verify initialization
-      let initAtMax = 0, initOther = 0;
-      for (let i = 0; i < currentGrid.data.length; i++) {
-        if (currentGrid.data[i] === maxState) initAtMax++;
-        else if (currentGrid.data[i] > 0) initOther++;
-      }
-      console.log(`Init: ${initAtMax} cells at maxState=${maxState}, ${initOther} at other states, preset=${presetSelect.value}`);
-
-      // Also check what updateMesh will see
-      console.log(`Render check: maxState=${maxState}, sample cell values: ${currentGrid.data.slice(0,10).join(',')}`);
-
-      // Count what render will show
-      let willShowAlive = 0, willShowDecay = 0;
-      for (let i = 0; i < currentGrid.data.length; i++) {
-        if (currentGrid.data[i] === maxState) willShowAlive++;
-        else if (currentGrid.data[i] > 0) willShowDecay++;
-      }
-      console.log(`Render will show: ${willShowAlive} cyan (alive), ${willShowDecay} orange (decay)`);
-
       // Generate neighborhood (Moore or von-Neumann from preset)
       const neighborhoodType = preset.neighborhood || 'moore';
       neighborhood = generateNeighborhood(dims, { type: neighborhoodType, range: 1 });
@@ -2564,13 +2555,6 @@
       neighborDeltas = computeNeighborIndexDeltas(neighborhood, currentGrid.strides);
       neighborOffsets = createNeighborOffsets(neighborhood);
       ruleLookups = createRuleLookups(rule.birth, rule.survival, maxNeighbors);
-
-      // Debug: verify rule lookups
-      const surviveAt = [];
-      for (let i = 0; i <= maxNeighbors; i++) {
-        if (ruleLookups.survival[i]) surviveAt.push(i);
-      }
-      console.log(`Survival lookup: survives at [${surviveAt.join(',')}]`);
 
       // --- Level 3+4: Initialize compute backends with fallback ---
       initComputeBackends(preset);
@@ -2587,6 +2571,11 @@
       camera.position.set(offset, offset * 0.8, offset);
       camera.lookAt(0, 0, 0);
       controls.update();
+
+      // Update fog to scale with grid size
+      // Fog starts at gridSize distance, full density at gridSize * 3
+      scene.fog.near = gridSize;
+      scene.fog.far = gridSize * 3;
 
       // Update visualization
       updateVisualization();
@@ -2626,38 +2615,14 @@
       useWebGL = false;
       useWorker = false;
 
-      // Try GPU compute for large grids (100+) - GPU simulation + instanced mesh rendering
-      // This is hybrid: GPU does CA math, but we sync to CPU for instanced mesh rendering
-      // NOTE: GPU shaders only support binary CA (states=2), not multi-state with decay
-      const isMultiState = preset.states > 2;
-      if (gridSize >= 100 && !isMultiState) {
-        try {
-          fullGPU = new FullGPUPipeline(renderer);
-          if (fullGPU.init(gridSize, preset.birth, preset.survival)) {
-            fullGPU.uploadInitialState(currentGrid.data);
-            computeMode = 'fullgpu';
-            // Use instanced mesh for rendering (not ray marching) - shows actual cubes
-            renderMode = 'instanced';
-            useFullGPU = true;
-            console.log(`Using GPU compute + instanced mesh for ${gridSize}³ grid`);
-            return;
-          }
-        } catch (e) {
-          console.warn('GPU compute not available:', e);
-        }
-        fullGPU = null;
-      }
-
-      // Try WebGL compute for medium-large grids (50-99)
-      // NOTE: WebGL shaders only support binary CA, not multi-state
-      if (gridSize >= 50 && !isMultiState) {
+      // Try WebGL compute for grids >= 30 (GPU acceleration for all presets)
+      if (gridSize >= 30) {
         try {
           webglCompute = new WebGLCACompute();
-          if (webglCompute.init(gridSize, preset.birth, preset.survival)) {
+          if (webglCompute.init(gridSize, preset.birth, preset.survival, maxState)) {
             webglCompute.uploadGrid(currentGrid.data);
             computeMode = 'webgl';
             useWebGL = true;
-            console.log(`Using WebGL compute for ${gridSize}³ grid`);
             return;
           }
         } catch (e) {
@@ -2666,7 +2631,7 @@
         webglCompute = null;
       }
 
-      // Try Web Worker for medium grids (30-49)
+      // Try Web Worker as fallback for medium grids
       if (gridSize >= 30 && typeof Worker !== 'undefined') {
         try {
           caWorker = createCAWorker();
@@ -2696,7 +2661,6 @@
 
           computeMode = 'worker';
           useWorker = true;
-          console.log(`Using Web Worker for ${gridSize}³ grid`);
           return;
         } catch (e) {
           console.warn('Web Worker not available:', e);
@@ -2706,7 +2670,6 @@
 
       // Fallback to optimized CPU (Level 1+2)
       computeMode = 'cpu';
-      console.log(`Using optimized CPU for ${gridSize}³ grid`);
     }
 
     // Handle messages from Web Worker
@@ -2763,6 +2726,11 @@
         aliveMesh.dispose();
         aliveMesh = null;
       }
+      if (interiorMesh) {
+        scene.remove(interiorMesh);
+        interiorMesh.dispose();
+        interiorMesh = null;
+      }
       if (decayMesh) {
         scene.remove(decayMesh);
         decayMesh.dispose();
@@ -2785,10 +2753,15 @@
       const totalCells = gridSize * gridSize * gridSize;
       const maxInstances = Math.min(totalCells, MAX_RENDER_INSTANCES);
 
-      // Mesh for fully alive cells
+      // Mesh for surface alive cells (bright cyan glow)
       aliveMesh = new THREE.InstancedMesh(cubeGeometry, aliveMaterial, maxInstances);
       aliveMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       scene.add(aliveMesh);
+
+      // Mesh for interior alive cells (dark cyan glow)
+      interiorMesh = new THREE.InstancedMesh(cubeGeometry, interiorMaterial, maxInstances);
+      interiorMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      scene.add(interiorMesh);
 
       // Mesh for decaying cells with per-instance gradient colors
       decayMesh = new THREE.InstancedMesh(cubeGeometry, decayMaterial, maxInstances);
@@ -2824,7 +2797,7 @@
     }
 
     function updateMesh() {
-      if (!aliveMesh || !decayMesh) return;
+      if (!aliveMesh || !interiorMesh || !decayMesh) return;
 
       const matrix = new THREE.Matrix4();
       const halfSize = gridSize / 2;
@@ -2837,10 +2810,8 @@
       const oz = worldCenter.z - halfSize + 0.5;
       const maxInstances = Math.min(total, MAX_RENDER_INSTANCES);
       let aliveIndex = 0;
+      let interiorIndex = 0;
       let decayIndex = 0;
-
-      // Colors for different cell types
-      const interiorAliveColor = new THREE.Color(0.0, 0.4, 0.4); // Dark cyan for interior alive
 
       // Direct array iteration
       for (let idx = 0; idx < total; idx++) {
@@ -2866,11 +2837,9 @@
               aliveMesh.setMatrixAt(aliveIndex++, matrix);
             }
           } else {
-            // Interior alive → dark cyan (decayMesh)
-            if (decayIndex < maxInstances) {
-              decayMesh.setMatrixAt(decayIndex, matrix);
-              decayMesh.setColorAt(decayIndex, interiorAliveColor);
-              decayIndex++;
+            // Interior alive → dark cyan (interiorMesh)
+            if (interiorIndex < maxInstances) {
+              interiorMesh.setMatrixAt(interiorIndex++, matrix);
             }
           }
         } else {
@@ -2885,6 +2854,9 @@
 
       aliveMesh.count = aliveIndex;
       aliveMesh.instanceMatrix.needsUpdate = true;
+
+      interiorMesh.count = interiorIndex;
+      interiorMesh.instanceMatrix.needsUpdate = true;
 
       decayMesh.count = decayIndex;
       decayMesh.instanceMatrix.needsUpdate = true;
@@ -2906,16 +2878,6 @@
 
     function stepSimulation() {
       const t0 = performance.now();
-      const popBefore = currentGrid.countPopulation();
-      // Count state distribution
-      const stateCounts = new Array(maxState + 1).fill(0);
-      for (let i = 0; i < currentGrid.data.length; i++) {
-        stateCounts[currentGrid.data[i]]++;
-      }
-      const stateStr = stateCounts.map((c, i) => `s${i}:${c}`).filter(s => !s.endsWith(':0')).join(' ');
-      console.log(`=== Step ${generation} -> ${generation+1} (${computeMode}, maxState=${maxState}) ===`);
-      console.log(`Population before: ${popBefore}, states: [${stateStr}]`);
-
       // Use appropriate compute backend
       if (computeMode === 'fullgpu' && fullGPU && fullGPU.initialized) {
         // GPU compute - CA runs on GPU, then sync to CPU for instanced mesh rendering
@@ -2969,11 +2931,6 @@
       }
 
       lastStepTime = performance.now() - t0;
-      const popAfter = currentGrid.countPopulation();
-      console.log(`Population after: ${popAfter} (delta: ${popAfter - popBefore})`);
-      if (Math.abs(popAfter - popBefore) > popBefore * 0.3) {
-        console.warn(`!!! LARGE POPULATION CHANGE: ${((popAfter - popBefore) / popBefore * 100).toFixed(1)}%`);
-      }
       updateStats();
     }
 
@@ -3333,7 +3290,7 @@
       }),
 
       getRendererInfo: () => ({
-        meshCount: (aliveMesh?.count ?? 0) + (decayMesh?.count ?? 0),
+        meshCount: (aliveMesh?.count ?? 0) + (interiorMesh?.count ?? 0) + (decayMesh?.count ?? 0),
         isContextLost: renderer?.getContext()?.isContextLost() ?? true
       }),
 
