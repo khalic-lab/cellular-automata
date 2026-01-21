@@ -439,7 +439,7 @@ export class ParticleRenderer {
 // ============================================================
 
 export class MarchingCubesRenderer {
-  constructor(scene, resolution = 32) {
+  constructor(scene, resolution = 28) {
     this.scene = scene;
     this.resolution = resolution;
 
@@ -460,8 +460,40 @@ export class MarchingCubesRenderer {
     this.gridSize = 50;
   }
 
+  // Check if cell is on the surface (has a dead neighbor)
+  isSurfaceCell(idx, data, size, state) {
+    if (state === 0) return false;
+    const size2 = size * size;
+    const z = idx % size;
+    const y = ((idx / size) | 0) % size;
+    const x = (idx / size2) | 0;
+
+    // Check 6 direct neighbors for any dead/lower state
+    const neighbors = [
+      [x - 1, y, z], [x + 1, y, z],
+      [x, y - 1, z], [x, y + 1, z],
+      [x, y, z - 1], [x, y, z + 1]
+    ];
+
+    for (const [nx, ny, nz] of neighbors) {
+      // Boundary counts as surface
+      if (nx < 0 || nx >= size || ny < 0 || ny >= size || nz < 0 || nz >= size) {
+        return true;
+      }
+      const neighborIdx = nx * size2 + ny * size + nz;
+      if (data[neighborIdx] < state) return true;
+    }
+    return false;
+  }
+
   update(gridData, gridSize, maxState, worldCenter) {
     this.gridSize = gridSize;
+
+    // Use lower resolution for larger grids to maintain performance
+    const effectiveRes = gridSize > 60 ? 24 : gridSize > 40 ? 28 : 32;
+    if (effectiveRes !== this.resolution) {
+      this.resolution = effectiveRes;
+    }
 
     // Initialize and reset the marching cubes field
     this.effect.init(this.resolution);
@@ -470,26 +502,32 @@ export class MarchingCubesRenderer {
 
     const size2 = gridSize * gridSize;
 
-    // Count alive cells
-    let aliveCount = 0;
+    // First pass: count surface cells only (optimization)
+    let surfaceCount = 0;
     for (let i = 0; i < gridData.length; i++) {
-      if (gridData[i] > 0) aliveCount++;
+      const state = gridData[i];
+      if (state > 0 && this.isSurfaceCell(i, gridData, gridSize, state)) {
+        surfaceCount++;
+      }
     }
 
-    if (aliveCount === 0) return;
+    if (surfaceCount === 0) return;
 
     // Scale factor: map grid coordinates to [0,1] range for MarchingCubes
     const invSize = 1.0 / gridSize;
 
-    // Ball parameters - smaller strength so balls blend nicely
-    // Each ball creates a small contribution, overlapping balls merge
-    const baseStrength = 0.6 / Math.max(1, Math.cbrt(aliveCount / 100));
-    const subtract = 12;
+    // Adaptive ball parameters based on surface cell count
+    // Fewer cells = larger balls for smoother surface
+    const baseStrength = Math.min(1.2, 0.4 + 200 / Math.max(surfaceCount, 1));
+    const subtract = 10;
 
-    // Add metaballs for each alive cell
+    // Add metaballs only for SURFACE cells (huge optimization)
     for (let i = 0; i < gridData.length; i++) {
       const state = gridData[i];
       if (state === 0) continue;
+
+      // Skip interior cells - they don't contribute to visible surface
+      if (!this.isSurfaceCell(i, gridData, gridSize, state)) continue;
 
       const z = i % gridSize;
       const y = ((i / gridSize) | 0) % gridSize;
@@ -501,7 +539,7 @@ export class MarchingCubesRenderer {
       const nz = (z + 0.5) * invSize;
 
       // Strength based on cell state
-      const strength = baseStrength * (state / maxState);
+      const strength = baseStrength * (0.5 + 0.5 * state / maxState);
       this.effect.addBall(nx, ny, nz, strength, subtract);
     }
 
@@ -509,7 +547,6 @@ export class MarchingCubesRenderer {
     this.effect.update();
 
     // Position and scale to match grid coordinates
-    // MarchingCubes generates geometry in [0,1] space, scale to grid size
     const halfGrid = gridSize / 2;
     this.effect.position.set(
       worldCenter.x - halfGrid,
@@ -517,8 +554,6 @@ export class MarchingCubesRenderer {
       worldCenter.z - halfGrid
     );
     this.effect.scale.set(gridSize, gridSize, gridSize);
-
-    console.log('[MarchingCubes] Generated', this.effect.count, 'triangles for', aliveCount, 'cells');
   }
 
   setIsoLevel(level) {
@@ -574,8 +609,6 @@ export class RenderManager {
   }
 
   setRenderMode(mode) {
-    console.log('[RenderManager] setRenderMode:', mode);
-
     // Hide all renderers
     if (this.cubeRenderer) this.cubeRenderer.setVisible(false);
     if (this.particleRenderer) this.particleRenderer.setVisible(false);
@@ -605,13 +638,12 @@ export class RenderManager {
         break;
 
       case RenderMode.MARCHING_CUBES:
-        console.log('[RenderManager] Creating/showing MarchingCubes renderer');
         if (!this.marchingCubesRenderer) {
-          const resolution = Math.min(64, this.gridSize);
+          // Use lower resolution for performance (28-32 is usually good)
+          const resolution = this.gridSize > 60 ? 24 : this.gridSize > 40 ? 28 : 32;
           this.marchingCubesRenderer = new MarchingCubesRenderer(this.scene, resolution);
         }
         this.marchingCubesRenderer.setVisible(true);
-        console.log('[RenderManager] MarchingCubes visible:', this.marchingCubesRenderer.effect?.visible);
         break;
     }
   }
