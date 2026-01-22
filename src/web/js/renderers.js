@@ -10,6 +10,9 @@
 
 import * as THREE from 'three';
 import { MarchingCubes } from 'three/examples/jsm/objects/MarchingCubes.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 
 export const RenderMode = {
   CUBES: 'cubes',
@@ -30,13 +33,20 @@ export class CubeRenderer {
     this.aliveMesh = null;
     this.interiorMesh = null;
     this.decayMesh = null;
+    this.aliveEdges = null;
+    this.brightEdges = null;
     this.gridHelper = null;
 
     this.cellScale = 1.0;
     this.cubeGeometry = null;
+    this.outlineGeometry = null;
     this.aliveMaterial = null;
     this.interiorMaterial = null;
     this.decayMaterial = null;
+    this.edgesMaterial = null;
+    this.brightEdgeMaterial = null;
+    this.showOutlines = true;
+    this.showBrightEdges = true;
 
     this.createMaterials();
     this.createGeometry(this.cellScale);
@@ -67,6 +77,23 @@ export class CubeRenderer {
       transparent: true,
       opacity: 0.3
     });
+
+    // Edge outline material - dark outline using inverted hull technique
+    this.edgesMaterial = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      side: THREE.BackSide,
+      transparent: true,
+      opacity: 0.85
+    });
+
+    // Bright edge material - thin lines with vertex colors, distance-scaled
+    this.brightEdgeMaterial = new LineMaterial({
+      color: 0xffffff,
+      linewidth: 1,
+      vertexColors: true,
+      dashed: false,
+      resolution: new THREE.Vector2(window.innerWidth, window.innerHeight)
+    });
   }
 
   setWireframe(enabled) {
@@ -75,9 +102,17 @@ export class CubeRenderer {
     if (this.decayMaterial) this.decayMaterial.wireframe = enabled;
   }
 
+  setOutlines(enabled) {
+    this.showOutlines = enabled;
+    if (this.aliveEdges) this.aliveEdges.visible = enabled;
+  }
+
   createGeometry(cellScale) {
     if (this.cubeGeometry) {
       this.cubeGeometry.dispose();
+    }
+    if (this.outlineGeometry) {
+      this.outlineGeometry.dispose();
     }
 
     this.cellScale = cellScale;
@@ -101,6 +136,10 @@ export class CubeRenderer {
     }
     this.cubeGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
+    // Create outline geometry - slightly larger for inverted hull technique
+    const outlineScale = cellScale * 1.06;
+    this.outlineGeometry = new THREE.BoxGeometry(outlineScale, outlineScale, outlineScale);
+
     // Update meshes if they exist
     if (this.aliveMesh) {
       this.aliveMesh.geometry = this.cubeGeometry;
@@ -111,6 +150,12 @@ export class CubeRenderer {
     if (this.decayMesh) {
       this.decayMesh.geometry = this.cubeGeometry;
     }
+    if (this.aliveEdges) {
+      this.aliveEdges.geometry = this.outlineGeometry;
+    }
+
+    // Update corner offsets for bright edge highlights
+    this.updateCornerOffsets();
   }
 
   createMeshes() {
@@ -125,6 +170,134 @@ export class CubeRenderer {
     this.decayMesh = new THREE.InstancedMesh(this.cubeGeometry, this.decayMaterial, this.maxInstances);
     this.decayMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.scene.add(this.decayMesh);
+
+    // Outline mesh - slightly larger dark cubes rendered on back side (inverted hull)
+    this.aliveEdges = new THREE.InstancedMesh(this.outlineGeometry, this.edgesMaterial, this.maxInstances);
+    this.aliveEdges.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.aliveEdges.visible = this.showOutlines;
+    this.aliveEdges.renderOrder = -1; // Render outlines first, behind main cubes
+    this.scene.add(this.aliveEdges);
+
+    // Bright edge lines - 12 edges per cube
+    this.createBrightEdges();
+  }
+
+  createBrightEdges() {
+    // 12 edges per cube, 2 vertices per edge = 24 vertices per cube
+    const maxVertices = this.maxInstances * 24;
+
+    // Arrays for storing data
+    this.edgePositions = new Float32Array(maxVertices * 3);
+    this.edgeColors = new Float32Array(maxVertices * 3);
+    this.edgeCornerOffsets = new Float32Array(maxVertices * 3);
+    this.edgeVertexCount = 0;
+
+    // Create geometry - will be updated each frame
+    this.edgeGeometry = new LineSegmentsGeometry();
+    this.brightEdges = new LineSegments2(this.edgeGeometry, this.brightEdgeMaterial);
+    this.brightEdges.frustumCulled = false;
+    this.brightEdges.visible = this.showBrightEdges;
+    this.scene.add(this.brightEdges);
+
+    // Pre-compute corner offsets (relative to cube center) - 8 corners indexed 0-7
+    this.updateCornerOffsets();
+
+    // Define the 12 edges as pairs of corner indices
+    // Corner indices: 0=(-,-,-), 1=(-,-,+), 2=(-,+,-), 3=(-,+,+), 4=(+,-,-), 5=(+,-,+), 6=(+,+,-), 7=(+,+,+)
+    this.edgeIndices = [
+      // Bottom face edges (y = -)
+      [0, 1], [1, 5], [5, 4], [4, 0],
+      // Top face edges (y = +)
+      [2, 3], [3, 7], [7, 6], [6, 2],
+      // Vertical edges connecting bottom to top
+      [0, 2], [1, 3], [4, 6], [5, 7]
+    ];
+  }
+
+  // Compute edge colors based on camera position (fills this.edgeColors array)
+  computeEdgeColors() {
+    if (!this.camera || this.edgeVertexCount === 0) return;
+
+    const camPos = this.camera.position;
+    const vertexCount = this.edgeVertexCount;
+
+    // Distance-based fade parameters (match cube lighting feel)
+    const nearDist = 20;
+    const farDist = 150;
+
+    for (let i = 0; i < vertexCount; i++) {
+      const vi = i * 3;
+
+      const vx = this.edgePositions[vi];
+      const vy = this.edgePositions[vi + 1];
+      const vz = this.edgePositions[vi + 2];
+      const cx = this.edgeCornerOffsets[vi];
+      const cy = this.edgeCornerOffsets[vi + 1];
+      const cz = this.edgeCornerOffsets[vi + 2];
+
+      const cLen = Math.sqrt(cx * cx + cy * cy + cz * cz);
+      const vdx = camPos.x - vx, vdy = camPos.y - vy, vdz = camPos.z - vz;
+      const vdLen = Math.sqrt(vdx * vdx + vdy * vdy + vdz * vdz);
+      const dot = (cx * vdx + cy * vdy + cz * vdz) / (cLen * vdLen);
+
+      // Facing edges are bright (1.0), away edges are dim (0.05)
+      const t = Math.max(0, dot);
+      const facingIntensity = 0.05 + t * 0.95;
+
+      // Distance-based fade - edges fade out with distance like cube lighting
+      const distT = Math.max(0, Math.min(1, (vdLen - nearDist) / (farDist - nearDist)));
+      const distFade = 1.0 - distT * 0.85; // Fade to 15% at far distance
+
+      const intensity = facingIntensity * distFade;
+
+      this.edgeColors[vi] = intensity;
+      this.edgeColors[vi + 1] = intensity;
+      this.edgeColors[vi + 2] = intensity;
+    }
+  }
+
+  // Update edge colors based on current camera position (call every frame)
+  updateBrightEdgeColors() {
+    if (!this.brightEdges || !this.camera || this.edgeVertexCount === 0) return;
+
+    // Scale line width based on camera distance - thinner when zoomed out
+    const camDist = this.camera.position.length();
+    const baseWidth = 1.0;
+    const minWidth = 0.2;
+    const maxDist = 150;
+    const minDist = 25;
+    const t = Math.max(0, Math.min(1, (camDist - minDist) / (maxDist - minDist)));
+    const lineWidth = baseWidth * (1 - t * 0.8); // Scale down to 20% at max distance
+    this.brightEdgeMaterial.linewidth = Math.max(minWidth, lineWidth);
+
+    // Compute new colors based on camera position
+    this.computeEdgeColors();
+
+    // Recreate geometry with updated colors (LineSegmentsGeometry doesn't support in-place color updates)
+    if (this.edgeGeometry) {
+      this.edgeGeometry.dispose();
+    }
+
+    this.edgeGeometry = new LineSegmentsGeometry();
+    const positions = this.edgePositions.slice(0, this.edgeVertexCount * 3);
+    const colors = this.edgeColors.slice(0, this.edgeVertexCount * 3);
+    this.edgeGeometry.setPositions(positions);
+    this.edgeGeometry.setColors(colors);
+    this.brightEdges.geometry = this.edgeGeometry;
+  }
+
+  updateCornerOffsets() {
+    const halfScale = this.cellScale * 0.5;
+    this.cornerOffsets = [
+      [-halfScale, -halfScale, -halfScale], // 0
+      [-halfScale, -halfScale,  halfScale], // 1
+      [-halfScale,  halfScale, -halfScale], // 2
+      [-halfScale,  halfScale,  halfScale], // 3
+      [ halfScale, -halfScale, -halfScale], // 4
+      [ halfScale, -halfScale,  halfScale], // 5
+      [ halfScale,  halfScale, -halfScale], // 6
+      [ halfScale,  halfScale,  halfScale]  // 7
+    ];
   }
 
   setupGridHelper(gridSize) {
@@ -173,8 +346,15 @@ export class CubeRenderer {
     return new THREE.Color().setRGB(1.0, t * 0.8, 0);
   }
 
+  setCamera(camera) {
+    this.camera = camera;
+  }
+
   update(gridData, size, maxState, displayMode, worldCenter) {
     if (!this.aliveMesh || !this.interiorMesh || !this.decayMesh) return;
+
+    // Reset edge vertex count at start of update
+    this.edgeVertexCount = 0;
 
     const matrix = new THREE.Matrix4();
     const halfSize = size / 2;
@@ -188,6 +368,7 @@ export class CubeRenderer {
     let aliveIndex = 0;
     let interiorIndex = 0;
     let decayIndex = 0;
+    let vertexIndex = 0;
 
     for (let idx = 0; idx < total; idx++) {
       const state = data[idx];
@@ -201,12 +382,49 @@ export class CubeRenderer {
       const z = idx % size;
       const y = ((idx / size) | 0) % size;
       const x = (idx / size2) | 0;
-      matrix.setPosition(x + ox, y + oy, z + oz);
+      const px = x + ox;
+      const py = y + oy;
+      const pz = z + oz;
+      matrix.setPosition(px, py, pz);
 
       if (state === maxState) {
         if (isSurface) {
           if (aliveIndex < maxInstances) {
-            this.aliveMesh.setMatrixAt(aliveIndex++, matrix);
+            this.aliveMesh.setMatrixAt(aliveIndex, matrix);
+            // Set outline at same position (geometry is already larger)
+            if (this.aliveEdges && this.showOutlines) {
+              this.aliveEdges.setMatrixAt(aliveIndex, matrix);
+            }
+
+            // Add 12 edge lines for this cube (24 vertices)
+            if (this.brightEdges && this.showBrightEdges && vertexIndex + 24 <= this.edgePositions.length / 3) {
+              for (let e = 0; e < 12; e++) {
+                const [c1, c2] = this.edgeIndices[e];
+                const corner1 = this.cornerOffsets[c1];
+                const corner2 = this.cornerOffsets[c2];
+
+                // First vertex
+                let vi = vertexIndex * 3;
+                this.edgePositions[vi] = px + corner1[0];
+                this.edgePositions[vi + 1] = py + corner1[1];
+                this.edgePositions[vi + 2] = pz + corner1[2];
+                this.edgeCornerOffsets[vi] = corner1[0];
+                this.edgeCornerOffsets[vi + 1] = corner1[1];
+                this.edgeCornerOffsets[vi + 2] = corner1[2];
+                vertexIndex++;
+
+                // Second vertex
+                vi = vertexIndex * 3;
+                this.edgePositions[vi] = px + corner2[0];
+                this.edgePositions[vi + 1] = py + corner2[1];
+                this.edgePositions[vi + 2] = pz + corner2[2];
+                this.edgeCornerOffsets[vi] = corner2[0];
+                this.edgeCornerOffsets[vi + 1] = corner2[1];
+                this.edgeCornerOffsets[vi + 2] = corner2[2];
+                vertexIndex++;
+              }
+            }
+            aliveIndex++;
           }
         } else {
           if (interiorIndex < maxInstances) {
@@ -224,6 +442,37 @@ export class CubeRenderer {
 
     this.aliveMesh.count = aliveIndex;
     this.aliveMesh.instanceMatrix.needsUpdate = true;
+
+    // Update outline mesh
+    if (this.aliveEdges) {
+      this.aliveEdges.count = aliveIndex;
+      this.aliveEdges.instanceMatrix.needsUpdate = true;
+    }
+
+    // Update bright edge lines - recreate geometry for reliable updates
+    if (this.brightEdges) {
+      this.edgeVertexCount = vertexIndex;
+
+      if (vertexIndex > 0) {
+        // Dispose old geometry
+        if (this.edgeGeometry) {
+          this.edgeGeometry.dispose();
+        }
+
+        // Create new geometry with current positions
+        this.edgeGeometry = new LineSegmentsGeometry();
+        const positions = this.edgePositions.slice(0, vertexIndex * 3);
+        this.edgeGeometry.setPositions(positions);
+
+        // Compute and set colors based on camera
+        this.computeEdgeColors();
+        const colors = this.edgeColors.slice(0, vertexIndex * 3);
+        this.edgeGeometry.setColors(colors);
+
+        // Assign new geometry to mesh
+        this.brightEdges.geometry = this.edgeGeometry;
+      }
+    }
 
     this.interiorMesh.count = interiorIndex;
     this.interiorMesh.instanceMatrix.needsUpdate = true;
@@ -243,7 +492,21 @@ export class CubeRenderer {
     if (this.aliveMesh) this.aliveMesh.visible = visible;
     if (this.interiorMesh) this.interiorMesh.visible = visible;
     if (this.decayMesh) this.decayMesh.visible = visible;
+    if (this.aliveEdges) this.aliveEdges.visible = visible && this.showOutlines;
+    if (this.brightEdges) this.brightEdges.visible = visible && this.showBrightEdges;
     if (this.gridHelper) this.gridHelper.visible = visible;
+  }
+
+  setBrightEdges(enabled) {
+    this.showBrightEdges = enabled;
+    if (this.brightEdges) this.brightEdges.visible = enabled;
+  }
+
+  resize(width, height) {
+    // Update LineMaterial resolution for proper line width scaling
+    if (this.brightEdgeMaterial) {
+      this.brightEdgeMaterial.resolution.set(width, height);
+    }
   }
 
   dispose() {
@@ -262,6 +525,17 @@ export class CubeRenderer {
       this.decayMesh.dispose();
       this.decayMesh = null;
     }
+    if (this.aliveEdges) {
+      this.scene.remove(this.aliveEdges);
+      this.aliveEdges.dispose();
+      this.aliveEdges = null;
+    }
+    if (this.brightEdges) {
+      this.scene.remove(this.brightEdges);
+      this.edgeGeometry?.dispose();
+      this.brightEdges = null;
+      this.edgeGeometry = null;
+    }
     if (this.gridHelper) {
       this.scene.remove(this.gridHelper);
       this.gridHelper.geometry.dispose();
@@ -271,6 +545,10 @@ export class CubeRenderer {
     if (this.cubeGeometry) {
       this.cubeGeometry.dispose();
       this.cubeGeometry = null;
+    }
+    if (this.outlineGeometry) {
+      this.outlineGeometry.dispose();
+      this.outlineGeometry = null;
     }
     if (this.aliveMaterial) {
       this.aliveMaterial.dispose();
@@ -283,6 +561,14 @@ export class CubeRenderer {
     if (this.decayMaterial) {
       this.decayMaterial.dispose();
       this.decayMaterial = null;
+    }
+    if (this.edgesMaterial) {
+      this.edgesMaterial.dispose();
+      this.edgesMaterial = null;
+    }
+    if (this.brightEdgeMaterial) {
+      this.brightEdgeMaterial.dispose();
+      this.brightEdgeMaterial = null;
     }
   }
 }
@@ -888,6 +1174,9 @@ export class RenderManager {
     // Create cube renderer by default
     this.cubeRenderer = new CubeRenderer(this.scene, maxInstances);
     this.cubeRenderer.setupGridHelper(gridSize);
+    if (this.camera) {
+      this.cubeRenderer.setCamera(this.camera);
+    }
   }
 
   setRenderMode(mode) {
@@ -907,6 +1196,9 @@ export class RenderManager {
           const maxInstances = Math.min(totalCells, this.maxInstances);
           this.cubeRenderer = new CubeRenderer(this.scene, maxInstances);
           this.cubeRenderer.setupGridHelper(this.gridSize);
+          if (this.camera) {
+            this.cubeRenderer.setCamera(this.camera);
+          }
         }
         this.cubeRenderer.setVisible(true);
         break;
@@ -939,6 +1231,9 @@ export class RenderManager {
 
   setCamera(camera) {
     this.camera = camera;
+    if (this.cubeRenderer) {
+      this.cubeRenderer.setCamera(camera);
+    }
   }
 
   setCellScale(scale) {
@@ -957,6 +1252,18 @@ export class RenderManager {
   setWireframe(enabled) {
     if (this.cubeRenderer) {
       this.cubeRenderer.setWireframe(enabled);
+    }
+  }
+
+  setOutlines(enabled) {
+    if (this.cubeRenderer) {
+      this.cubeRenderer.setOutlines(enabled);
+    }
+  }
+
+  setBrightEdges(enabled) {
+    if (this.cubeRenderer) {
+      this.cubeRenderer.setBrightEdges(enabled);
     }
   }
 
@@ -995,6 +1302,20 @@ export class RenderManager {
     this.dispose();
     this.init(gridSize);
     this.setRenderMode(this.currentMode);
+  }
+
+  resizeWindow(width, height) {
+    // Update line material resolution for proper line widths
+    if (this.cubeRenderer) {
+      this.cubeRenderer.resize(width, height);
+    }
+  }
+
+  // Update camera-facing edge highlights (call every frame)
+  updateEdgeHighlights() {
+    if (this.currentMode === RenderMode.CUBES && this.cubeRenderer) {
+      this.cubeRenderer.updateBrightEdgeColors();
+    }
   }
 
   getMeshCount() {

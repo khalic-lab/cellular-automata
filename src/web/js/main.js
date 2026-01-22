@@ -231,6 +231,10 @@ const uiCallbacks = {
     renderManager.setWireframe(enabled);
   },
 
+  onOutlinesChange: (enabled) => {
+    renderManager.setOutlines(enabled);
+  },
+
   onPostEffectChange: (effect) => {
     state.postEffect = effect;
     postProcessing.setEffect(effect);
@@ -664,6 +668,10 @@ function animate(currentTime) {
   }
 
   controls.update();
+
+  // Update camera-facing edge highlights
+  renderManager.updateEdgeHighlights();
+
   postProcessing.render();
 }
 
@@ -676,6 +684,7 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   postProcessing.resize(window.innerWidth, window.innerHeight);
+  renderManager.resizeWindow(window.innerWidth, window.innerHeight);
 });
 
 // ============================================================

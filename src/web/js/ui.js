@@ -114,6 +114,7 @@ export class UIManager {
       cellScaleSlider: document.getElementById('cellScale'),
       cellScaleValue: document.getElementById('cellScaleValue'),
       wireframeCheckbox: document.getElementById('wireframe'),
+      outlinesCheckbox: document.getElementById('outlines'),
       postEffectSelect: document.getElementById('postEffect'),
       bloomControls: document.getElementById('bloomControls'),
       bloomStrengthSlider: document.getElementById('bloomStrength'),
@@ -233,6 +234,11 @@ export class UIManager {
     // Wireframe
     e.wireframeCheckbox?.addEventListener('change', () => {
       cb.onWireframeChange?.(e.wireframeCheckbox.checked);
+    });
+
+    // Outlines
+    e.outlinesCheckbox?.addEventListener('change', () => {
+      cb.onOutlinesChange?.(e.outlinesCheckbox.checked);
     });
 
     // Post-processing
