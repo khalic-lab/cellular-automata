@@ -125,6 +125,7 @@ scene.add(directionalLight2);
 
 const MAX_RENDER_INSTANCES = 1000000;
 const renderManager = new RenderManager(scene, MAX_RENDER_INSTANCES);
+renderManager.setCamera(camera);
 const postProcessing = new PostProcessingManager(renderer, scene, camera);
 
 // ============================================================
@@ -171,12 +172,11 @@ const uiCallbacks = {
     const preset = RULE_PRESETS[presetName];
     if (!preset) return;
 
-    // Set particle style and auto-switch render mode for clouds
+    // Auto-switch render mode for clouds preset
     if (presetName === 'clouds') {
-      renderManager.setParticleStyle(ParticleStyle.CLOUDS);
-      state.renderMode = RenderMode.PARTICLES;
-      renderManager.setRenderMode(RenderMode.PARTICLES);
-      document.getElementById('renderMode').value = 'particles';
+      state.renderMode = RenderMode.VOLUMETRIC;
+      renderManager.setRenderMode(RenderMode.VOLUMETRIC);
+      document.getElementById('renderMode').value = 'volumetric';
     } else {
       renderManager.setParticleStyle(ParticleStyle.DEFAULT);
     }

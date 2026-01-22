@@ -14,7 +14,8 @@ import { MarchingCubes } from 'three/examples/jsm/objects/MarchingCubes.js';
 export const RenderMode = {
   CUBES: 'cubes',
   PARTICLES: 'particles',
-  MARCHING_CUBES: 'marchingCubes'
+  MARCHING_CUBES: 'marchingCubes',
+  VOLUMETRIC: 'volumetric'
 };
 
 // ============================================================
@@ -461,6 +462,203 @@ export class ParticleRenderer {
 }
 
 // ============================================================
+// VOLUMETRIC CLOUD RENDERER (Raymarching)
+// ============================================================
+
+export class VolumetricCloudRenderer {
+  constructor(scene, gridSize = 50) {
+    this.scene = scene;
+    this.gridSize = gridSize;
+
+    // Create 3D texture for grid data
+    this.texture3D = null;
+    this.textureData = null;
+
+    // Create box geometry that encompasses the grid
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+
+    // Raymarching shader
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        uVolume: { value: null },
+        uGridSize: { value: gridSize },
+        uSteps: { value: 64 },
+        uDensity: { value: 0.5 },
+        uLightDir: { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() },
+        uLightColor: { value: new THREE.Vector3(1.0, 0.95, 0.9) },
+        uAmbient: { value: new THREE.Vector3(0.6, 0.7, 0.9) },
+        uCameraPos: { value: new THREE.Vector3() }
+      },
+      vertexShader: `
+        varying vec3 vWorldPos;
+        varying vec3 vLocalPos;
+
+        void main() {
+          vLocalPos = position + 0.5; // [0,1] range
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vWorldPos = worldPos.xyz;
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+      `,
+      fragmentShader: `
+        uniform sampler3D uVolume;
+        uniform float uGridSize;
+        uniform int uSteps;
+        uniform float uDensity;
+        uniform vec3 uLightDir;
+        uniform vec3 uLightColor;
+        uniform vec3 uAmbient;
+        uniform vec3 uCameraPos;
+
+        varying vec3 vWorldPos;
+        varying vec3 vLocalPos;
+
+        // Ray-box intersection
+        vec2 intersectBox(vec3 orig, vec3 dir, vec3 boxMin, vec3 boxMax) {
+          vec3 invDir = 1.0 / dir;
+          vec3 t0 = (boxMin - orig) * invDir;
+          vec3 t1 = (boxMax - orig) * invDir;
+          vec3 tmin = min(t0, t1);
+          vec3 tmax = max(t0, t1);
+          float tNear = max(max(tmin.x, tmin.y), tmin.z);
+          float tFar = min(min(tmax.x, tmax.y), tmax.z);
+          return vec2(tNear, tFar);
+        }
+
+        float sampleDensity(vec3 pos) {
+          if (any(lessThan(pos, vec3(0.0))) || any(greaterThan(pos, vec3(1.0)))) {
+            return 0.0;
+          }
+          return texture(uVolume, pos).r;
+        }
+
+        void main() {
+          vec3 rayOrigin = uCameraPos;
+          vec3 rayDir = normalize(vWorldPos - uCameraPos);
+
+          // Transform to local [0,1] space
+          mat4 invModel = inverse(modelMatrix);
+          vec3 localOrigin = (invModel * vec4(rayOrigin, 1.0)).xyz + 0.5;
+          vec3 localDir = normalize((invModel * vec4(rayDir, 0.0)).xyz);
+
+          vec2 t = intersectBox(localOrigin, localDir, vec3(0.0), vec3(1.0));
+          if (t.x > t.y || t.y < 0.0) discard;
+
+          t.x = max(t.x, 0.0);
+          float stepSize = (t.y - t.x) / float(uSteps);
+
+          vec3 pos = localOrigin + localDir * t.x;
+          vec3 step = localDir * stepSize;
+
+          float transmittance = 1.0;
+          vec3 color = vec3(0.0);
+
+          for (int i = 0; i < 64; i++) {
+            if (i >= uSteps) break;
+
+            float density = sampleDensity(pos) * uDensity;
+
+            if (density > 0.01) {
+              // Simple lighting - sample toward light
+              float lightDensity = 0.0;
+              vec3 lightPos = pos;
+              for (int j = 0; j < 6; j++) {
+                lightPos += uLightDir * 0.05;
+                lightDensity += sampleDensity(lightPos) * 0.15;
+              }
+
+              float lightTransmit = exp(-lightDensity * 2.0);
+              vec3 luminance = uLightColor * lightTransmit + uAmbient * (1.0 - lightTransmit * 0.5);
+
+              color += transmittance * density * luminance * stepSize * 8.0;
+              transmittance *= exp(-density * stepSize * 4.0);
+
+              if (transmittance < 0.01) break;
+            }
+
+            pos += step;
+          }
+
+          if (transmittance > 0.99) discard;
+
+          gl_FragColor = vec4(color, 1.0 - transmittance);
+        }
+      `,
+      transparent: true,
+      side: THREE.BackSide,
+      depthWrite: false
+    });
+
+    this.mesh = new THREE.Mesh(geometry, this.material);
+    this.mesh.visible = false;
+    this.scene.add(this.mesh);
+
+    this.initTexture(gridSize);
+  }
+
+  initTexture(gridSize) {
+    this.gridSize = gridSize;
+    const size = gridSize;
+    this.textureData = new Uint8Array(size * size * size);
+
+    this.texture3D = new THREE.Data3DTexture(this.textureData, size, size, size);
+    this.texture3D.format = THREE.RedFormat;
+    this.texture3D.type = THREE.UnsignedByteType;
+    this.texture3D.minFilter = THREE.LinearFilter;
+    this.texture3D.magFilter = THREE.LinearFilter;
+    this.texture3D.wrapS = THREE.ClampToEdgeWrapping;
+    this.texture3D.wrapT = THREE.ClampToEdgeWrapping;
+    this.texture3D.wrapR = THREE.ClampToEdgeWrapping;
+    this.texture3D.needsUpdate = true;
+
+    this.material.uniforms.uVolume.value = this.texture3D;
+    this.material.uniforms.uGridSize.value = gridSize;
+  }
+
+  update(gridData, gridSize, maxState, worldCenter, camera) {
+    if (gridSize !== this.gridSize) {
+      this.initTexture(gridSize);
+    }
+
+    // Copy grid data to texture (normalize to 0-255)
+    const size2 = gridSize * gridSize;
+    for (let i = 0; i < gridData.length; i++) {
+      // Remap: grid uses x*size2 + y*size + z, texture uses x + y*size + z*size2
+      const gz = i % gridSize;
+      const gy = ((i / gridSize) | 0) % gridSize;
+      const gx = (i / size2) | 0;
+      const texIdx = gx + gy * gridSize + gz * size2;
+      this.textureData[texIdx] = gridData[i] > 0 ? Math.floor((gridData[i] / maxState) * 255) : 0;
+    }
+    this.texture3D.needsUpdate = true;
+
+    // Update camera position for raymarching
+    if (camera) {
+      this.material.uniforms.uCameraPos.value.copy(camera.position);
+    }
+
+    // Position and scale mesh
+    this.mesh.position.set(worldCenter.x, worldCenter.y, worldCenter.z);
+    this.mesh.scale.set(gridSize, gridSize, gridSize);
+  }
+
+  setVisible(visible) {
+    this.mesh.visible = visible;
+  }
+
+  dispose() {
+    if (this.mesh) {
+      this.scene.remove(this.mesh);
+      this.mesh.geometry.dispose();
+      this.material.dispose();
+    }
+    if (this.texture3D) {
+      this.texture3D.dispose();
+    }
+  }
+}
+
+// ============================================================
 // MARCHING CUBES RENDERER
 // ============================================================
 
@@ -665,9 +863,11 @@ export class RenderManager {
     this.cubeRenderer = null;
     this.particleRenderer = null;
     this.marchingCubesRenderer = null;
+    this.volumetricRenderer = null;
 
     this.gridSize = 50;
     this.cellScale = 0.85;
+    this.camera = null; // Need camera ref for volumetric
   }
 
   init(gridSize) {
@@ -685,6 +885,7 @@ export class RenderManager {
     if (this.cubeRenderer) this.cubeRenderer.setVisible(false);
     if (this.particleRenderer) this.particleRenderer.setVisible(false);
     if (this.marchingCubesRenderer) this.marchingCubesRenderer.setVisible(false);
+    if (this.volumetricRenderer) this.volumetricRenderer.setVisible(false);
 
     this.currentMode = mode;
 
@@ -711,13 +912,23 @@ export class RenderManager {
 
       case RenderMode.MARCHING_CUBES:
         if (!this.marchingCubesRenderer) {
-          // Cap resolution for performance (smoothing compensates for lower res)
           const resolution = Math.min(this.gridSize, 40);
           this.marchingCubesRenderer = new MarchingCubesRenderer(this.scene, resolution);
         }
         this.marchingCubesRenderer.setVisible(true);
         break;
+
+      case RenderMode.VOLUMETRIC:
+        if (!this.volumetricRenderer) {
+          this.volumetricRenderer = new VolumetricCloudRenderer(this.scene, this.gridSize);
+        }
+        this.volumetricRenderer.setVisible(true);
+        break;
     }
+  }
+
+  setCamera(camera) {
+    this.camera = camera;
   }
 
   setCellScale(scale) {
@@ -750,6 +961,12 @@ export class RenderManager {
       case RenderMode.MARCHING_CUBES:
         if (this.marchingCubesRenderer) {
           this.marchingCubesRenderer.update(gridData, size, maxState, worldCenter);
+        }
+        break;
+
+      case RenderMode.VOLUMETRIC:
+        if (this.volumetricRenderer) {
+          this.volumetricRenderer.update(gridData, size, maxState, worldCenter, this.camera);
         }
         break;
     }
@@ -799,6 +1016,10 @@ export class RenderManager {
     if (this.marchingCubesRenderer) {
       this.marchingCubesRenderer.dispose();
       this.marchingCubesRenderer = null;
+    }
+    if (this.volumetricRenderer) {
+      this.volumetricRenderer.dispose();
+      this.volumetricRenderer = null;
     }
   }
 }
