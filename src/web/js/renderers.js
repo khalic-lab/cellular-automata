@@ -69,6 +69,12 @@ export class CubeRenderer {
     });
   }
 
+  setWireframe(enabled) {
+    if (this.aliveMaterial) this.aliveMaterial.wireframe = enabled;
+    if (this.interiorMaterial) this.interiorMaterial.wireframe = enabled;
+    if (this.decayMaterial) this.decayMaterial.wireframe = enabled;
+  }
+
   createGeometry(cellScale) {
     if (this.cubeGeometry) {
       this.cubeGeometry.dispose();
@@ -945,6 +951,12 @@ export class RenderManager {
   setParticleStyle(style) {
     if (this.particleRenderer) {
       this.particleRenderer.setStyle(style);
+    }
+  }
+
+  setWireframe(enabled) {
+    if (this.cubeRenderer) {
+      this.cubeRenderer.setWireframe(enabled);
     }
   }
 

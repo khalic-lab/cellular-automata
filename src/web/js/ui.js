@@ -113,6 +113,7 @@ export class UIManager {
       // New controls
       cellScaleSlider: document.getElementById('cellScale'),
       cellScaleValue: document.getElementById('cellScaleValue'),
+      wireframeCheckbox: document.getElementById('wireframe'),
       postEffectSelect: document.getElementById('postEffect'),
       bloomControls: document.getElementById('bloomControls'),
       bloomStrengthSlider: document.getElementById('bloomStrength'),
@@ -227,6 +228,11 @@ export class UIManager {
       const value = parseFloat(e.cellScaleSlider.value);
       if (e.cellScaleValue) e.cellScaleValue.textContent = value.toFixed(2);
       cb.onCellScaleChange?.(value);
+    });
+
+    // Wireframe
+    e.wireframeCheckbox?.addEventListener('change', () => {
+      cb.onWireframeChange?.(e.wireframeCheckbox.checked);
     });
 
     // Post-processing

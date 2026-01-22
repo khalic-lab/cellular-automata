@@ -227,6 +227,10 @@ const uiCallbacks = {
     updateVisualization();
   },
 
+  onWireframeChange: (enabled) => {
+    renderManager.setWireframe(enabled);
+  },
+
   onPostEffectChange: (effect) => {
     state.postEffect = effect;
     postProcessing.setEffect(effect);
