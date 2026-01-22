@@ -483,7 +483,7 @@ export class VolumetricCloudRenderer {
         uVolume: { value: null },
         uGridSize: { value: gridSize },
         uSteps: { value: 64 },
-        uDensity: { value: 1.5 },
+        uDensity: { value: 1.0 },
         uLightDir: { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() },
         uLightColor: { value: new THREE.Vector3(1.0, 0.95, 0.9) },
         uAmbient: { value: new THREE.Vector3(0.6, 0.7, 0.9) },
@@ -567,8 +567,8 @@ export class VolumetricCloudRenderer {
               float lightTransmit = exp(-lightDensity * 2.0);
               vec3 luminance = uLightColor * lightTransmit + uAmbient * (1.0 - lightTransmit * 0.5);
 
-              color += transmittance * density * luminance * stepSize * 15.0;
-              transmittance *= exp(-density * stepSize * 8.0);
+              color += transmittance * density * luminance * stepSize * 12.0;
+              transmittance *= exp(-density * stepSize * 6.0);
 
               if (transmittance < 0.01) break;
             }

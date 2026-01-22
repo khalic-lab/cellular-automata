@@ -172,11 +172,9 @@ const uiCallbacks = {
     const preset = RULE_PRESETS[presetName];
     if (!preset) return;
 
-    // Auto-switch render mode for clouds preset
+    // Set particle style for clouds preset (if user manually switches to particles)
     if (presetName === 'clouds') {
-      state.renderMode = RenderMode.VOLUMETRIC;
-      renderManager.setRenderMode(RenderMode.VOLUMETRIC);
-      document.getElementById('renderMode').value = 'volumetric';
+      renderManager.setParticleStyle(ParticleStyle.CLOUDS);
     } else {
       renderManager.setParticleStyle(ParticleStyle.DEFAULT);
     }
