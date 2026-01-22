@@ -32,7 +32,7 @@ export class CubeRenderer {
     this.decayMesh = null;
     this.gridHelper = null;
 
-    this.cellScale = 0.85;
+    this.cellScale = 1.0;
     this.cubeGeometry = null;
     this.aliveMaterial = null;
     this.interiorMaterial = null;
@@ -870,7 +870,7 @@ export class RenderManager {
     this.volumetricRenderer = null;
 
     this.gridSize = 50;
-    this.cellScale = 0.85;
+    this.cellScale = 1.0;
     this.camera = null; // Need camera ref for volumetric
   }
 

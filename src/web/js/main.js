@@ -75,7 +75,7 @@ const state = {
   worldCenter: { x: 0, y: 0, z: 0 },
   displayMode: 'all',
   renderMode: RenderMode.CUBES,
-  cellScale: 0.85,
+  cellScale: 1.0,
   postEffect: PostEffect.NONE
 };
 
