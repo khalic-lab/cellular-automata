@@ -27,7 +27,7 @@ import {
   RULE_PRESETS
 } from './ca-engine.js';
 
-import { RenderMode, RenderManager } from './renderers.js';
+import { RenderMode, RenderManager, ParticleStyle } from './renderers.js';
 import { PostEffect, PostProcessingManager } from './postprocessing.js';
 import { UIManager } from './ui.js';
 
@@ -92,8 +92,8 @@ scene.fog = new THREE.Fog(0x0a0a15, 20, 120);
 const camera = new THREE.PerspectiveCamera(
   60,
   window.innerWidth / window.innerHeight,
-  0.1,
-  1000
+  0.01,  // Lower near plane to prevent clipping when close
+  2000
 );
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -170,6 +170,17 @@ const uiCallbacks = {
   onPresetChange: (presetName) => {
     const preset = RULE_PRESETS[presetName];
     if (!preset) return;
+
+    // Set particle style and auto-switch render mode for clouds
+    if (presetName === 'clouds') {
+      renderManager.setParticleStyle(ParticleStyle.CLOUDS);
+      state.renderMode = RenderMode.PARTICLES;
+      renderManager.setRenderMode(RenderMode.PARTICLES);
+      document.getElementById('renderMode').value = 'particles';
+    } else {
+      renderManager.setParticleStyle(ParticleStyle.DEFAULT);
+    }
+
     applyPreset(preset, presetName);
   },
 

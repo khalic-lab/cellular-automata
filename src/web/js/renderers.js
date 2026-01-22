@@ -284,10 +284,16 @@ export class CubeRenderer {
 // PARTICLE RENDERER
 // ============================================================
 
+export const ParticleStyle = {
+  DEFAULT: 'default',
+  CLOUDS: 'clouds'
+};
+
 export class ParticleRenderer {
   constructor(scene, maxParticles) {
     this.scene = scene;
     this.maxParticles = maxParticles;
+    this.style = ParticleStyle.DEFAULT;
 
     this.geometry = new THREE.BufferGeometry();
     this.positions = new Float32Array(maxParticles * 3);
@@ -320,7 +326,7 @@ export class ParticleRenderer {
         void main() {
           float r = length(gl_PointCoord - 0.5);
           if (r > 0.5) discard;
-          float alpha = smoothstep(0.5, 0.3, r) * opacity;
+          float alpha = smoothstep(0.5, 0.1, r) * opacity;
           gl_FragColor = vec4(vColor, alpha);
         }
       `,
@@ -331,6 +337,18 @@ export class ParticleRenderer {
 
     this.points = new THREE.Points(this.geometry, this.material);
     this.scene.add(this.points);
+  }
+
+  setStyle(style) {
+    this.style = style;
+    // Adjust material for cloud style
+    if (style === ParticleStyle.CLOUDS) {
+      this.material.uniforms.opacity.value = 0.6;
+      this.material.blending = THREE.NormalBlending;
+    } else {
+      this.material.uniforms.opacity.value = 0.35;
+      this.material.blending = THREE.NormalBlending;
+    }
   }
 
   isSurfaceCell(idx, data, size, state) {
@@ -381,8 +399,16 @@ export class ParticleRenderer {
       this.positions[idx * 3 + 1] = y - halfSize + worldCenter.y;
       this.positions[idx * 3 + 2] = z - halfSize + worldCenter.z;
 
-      // Color and size based on state AND surface detection
-      if (state === maxState) {
+      // Color and size based on style, state, and surface detection
+      if (this.style === ParticleStyle.CLOUDS) {
+        // Cloud style - white/gray fluffy particles
+        const brightness = isSurface ? 1.0 : 0.7;
+        const variation = Math.random() * 0.1; // Slight variation
+        this.colors[idx * 3] = brightness - variation;
+        this.colors[idx * 3 + 1] = brightness - variation;
+        this.colors[idx * 3 + 2] = brightness;
+        this.sizes[idx] = isSurface ? 8.0 + Math.random() * 4 : 4.0 + Math.random() * 2;
+      } else if (state === maxState) {
         if (isSurface) {
           // Surface alive - bright cyan, large
           this.colors[idx * 3] = 0;
@@ -439,25 +465,30 @@ export class ParticleRenderer {
 // ============================================================
 
 export class MarchingCubesRenderer {
-  constructor(scene, resolution = 28) {
+  constructor(scene, resolution = 40) {
     this.scene = scene;
     this.resolution = resolution;
 
-    // Smooth shaded material for organic look
-    this.material = new THREE.MeshStandardMaterial({
+    // Organic iridescent material
+    this.material = new THREE.MeshPhysicalMaterial({
       color: 0x00ddaa,
-      roughness: 0.4,
-      metalness: 0.1,
+      roughness: 0.2,
+      metalness: 0.3,
+      clearcoat: 0.4,
+      clearcoatRoughness: 0.2,
+      envMapIntensity: 1.0,
       side: THREE.DoubleSide
     });
 
     // MarchingCubes(resolution, material, enableUvs, enableColors, maxPolyCount)
-    this.effect = new MarchingCubes(resolution, this.material, false, false, 200000);
-    this.effect.isolation = 80;
+    // Higher poly count needed for precise cell-accurate rendering
+    this.effect = new MarchingCubes(resolution, this.material, false, false, 500000);
+    this.effect.isolation = 50;
     this.effect.visible = true;
     this.scene.add(this.effect);
 
     this.gridSize = 50;
+    this.smoothing = true; // Enable field smoothing for organic look
   }
 
   // Check if cell is on the surface (has a dead neighbor)
@@ -489,58 +520,58 @@ export class MarchingCubesRenderer {
   update(gridData, gridSize, maxState, worldCenter) {
     this.gridSize = gridSize;
 
-    // Use lower resolution for larger grids to maintain performance
-    const effectiveRes = gridSize > 60 ? 24 : gridSize > 40 ? 28 : 32;
+    // Cap resolution for performance - smoothing makes up for lower res
+    const effectiveRes = Math.min(gridSize, 40);
     if (effectiveRes !== this.resolution) {
       this.resolution = effectiveRes;
     }
 
     // Initialize and reset the marching cubes field
     this.effect.init(this.resolution);
-    this.effect.isolation = 80;
+    // In MarchingCubes: field < isolation = "inside" (solid), field >= isolation = "outside" (empty)
+    // We want alive cells to be solid (inside) and dead cells to be empty (outside)
+    this.effect.isolation = 50;
     this.effect.reset();
 
-    const size2 = gridSize * gridSize;
+    const field = this.effect.field;
+    const mcSize = this.effect.size;
+    const mcSize2 = mcSize * mcSize;
 
-    // First pass: count surface cells only (optimization)
-    let surfaceCount = 0;
-    for (let i = 0; i < gridData.length; i++) {
-      const state = gridData[i];
-      if (state > 0 && this.isSurfaceCell(i, gridData, gridSize, state)) {
-        surfaceCount++;
-      }
+    // Scale factor from grid to marching cubes resolution
+    const scale = mcSize / gridSize;
+    const gridSize2 = gridSize * gridSize;
+
+    // Initialize all cells as "outside" (empty) - field value above isolation
+    for (let i = 0; i < field.length; i++) {
+      field[i] = 100; // Above isolation(50), so "outside"
     }
 
-    if (surfaceCount === 0) return;
-
-    // Scale factor: map grid coordinates to [0,1] range for MarchingCubes
-    const invSize = 1.0 / gridSize;
-
-    // Adaptive ball parameters based on surface cell count
-    // Fewer cells = larger balls for smoother surface
-    const baseStrength = Math.min(1.2, 0.4 + 200 / Math.max(surfaceCount, 1));
-    const subtract = 10;
-
-    // Add metaballs only for SURFACE cells (huge optimization)
+    // Mark alive cells as "inside" (solid) - field value below isolation
     for (let i = 0; i < gridData.length; i++) {
       const state = gridData[i];
       if (state === 0) continue;
 
-      // Skip interior cells - they don't contribute to visible surface
-      if (!this.isSurfaceCell(i, gridData, gridSize, state)) continue;
+      // Grid coordinates
+      const gz = i % gridSize;
+      const gy = ((i / gridSize) | 0) % gridSize;
+      const gx = (i / gridSize2) | 0;
 
-      const z = i % gridSize;
-      const y = ((i / gridSize) | 0) % gridSize;
-      const x = (i / size2) | 0;
+      // Map to marching cubes field coordinates
+      const mcx = Math.floor(gx * scale);
+      const mcy = Math.floor(gy * scale);
+      const mcz = Math.floor(gz * scale);
 
-      // Normalized coordinates [0, 1]
-      const nx = (x + 0.5) * invSize;
-      const ny = (y + 0.5) * invSize;
-      const nz = (z + 0.5) * invSize;
+      // Bounds check
+      if (mcx >= mcSize || mcy >= mcSize || mcz >= mcSize) continue;
 
-      // Strength based on cell state
-      const strength = baseStrength * (0.5 + 0.5 * state / maxState);
-      this.effect.addBall(nx, ny, nz, strength, subtract);
+      // Set field value: alive cells are "inside" (below isolation)
+      const fieldIdx = mcx + mcy * mcSize + mcz * mcSize2;
+      field[fieldIdx] = 0; // Below isolation(50), so "inside"
+    }
+
+    // Smoothing pass - blur the field for organic rounded edges
+    if (this.smoothing) {
+      this.smoothField(field, mcSize);
     }
 
     // CRITICAL: Must call update() to generate the mesh geometry
@@ -556,8 +587,49 @@ export class MarchingCubesRenderer {
     this.effect.scale.set(gridSize, gridSize, gridSize);
   }
 
+  // Fast separable blur - 3 passes of 1D blur (9 samples vs 27)
+  smoothField(field, size) {
+    const size2 = size * size;
+    const temp = new Float32Array(field.length);
+
+    // X-axis pass
+    for (let z = 0; z < size; z++) {
+      for (let y = 0; y < size; y++) {
+        for (let x = 1; x < size - 1; x++) {
+          const idx = x + y * size + z * size2;
+          temp[idx] = (field[idx - 1] + field[idx] + field[idx + 1]) / 3;
+        }
+      }
+    }
+
+    // Y-axis pass
+    for (let z = 0; z < size; z++) {
+      for (let x = 0; x < size; x++) {
+        for (let y = 1; y < size - 1; y++) {
+          const idx = x + y * size + z * size2;
+          field[idx] = (temp[idx - size] + temp[idx] + temp[idx + size]) / 3;
+        }
+      }
+    }
+
+    // Z-axis pass
+    temp.set(field);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        for (let z = 1; z < size - 1; z++) {
+          const idx = x + y * size + z * size2;
+          field[idx] = (temp[idx - size2] + temp[idx] + temp[idx + size2]) / 3;
+        }
+      }
+    }
+  }
+
   setIsoLevel(level) {
     this.effect.isolation = level;
+  }
+
+  setSmoothing(enabled) {
+    this.smoothing = enabled;
   }
 
   setColor(color) {
@@ -639,8 +711,8 @@ export class RenderManager {
 
       case RenderMode.MARCHING_CUBES:
         if (!this.marchingCubesRenderer) {
-          // Use lower resolution for performance (28-32 is usually good)
-          const resolution = this.gridSize > 60 ? 24 : this.gridSize > 40 ? 28 : 32;
+          // Cap resolution for performance (smoothing compensates for lower res)
+          const resolution = Math.min(this.gridSize, 40);
           this.marchingCubesRenderer = new MarchingCubesRenderer(this.scene, resolution);
         }
         this.marchingCubesRenderer.setVisible(true);
@@ -652,6 +724,12 @@ export class RenderManager {
     this.cellScale = scale;
     if (this.cubeRenderer) {
       this.cubeRenderer.createGeometry(scale);
+    }
+  }
+
+  setParticleStyle(style) {
+    if (this.particleRenderer) {
+      this.particleRenderer.setStyle(style);
     }
   }
 
