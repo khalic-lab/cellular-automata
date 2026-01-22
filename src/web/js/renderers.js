@@ -487,14 +487,13 @@ export class VolumetricCloudRenderer {
         uLightDir: { value: new THREE.Vector3(0.5, 1.0, 0.3).normalize() },
         uLightColor: { value: new THREE.Vector3(1.0, 0.95, 0.9) },
         uAmbient: { value: new THREE.Vector3(0.6, 0.7, 0.9) },
-        uCameraPos: { value: new THREE.Vector3() }
+        uCameraPos: { value: new THREE.Vector3() },
+        uInvModelMatrix: { value: new THREE.Matrix4() }
       },
       vertexShader: `
         varying vec3 vWorldPos;
-        varying vec3 vLocalPos;
 
         void main() {
-          vLocalPos = position + 0.5; // [0,1] range
           vec4 worldPos = modelMatrix * vec4(position, 1.0);
           vWorldPos = worldPos.xyz;
           gl_Position = projectionMatrix * viewMatrix * worldPos;
@@ -509,9 +508,9 @@ export class VolumetricCloudRenderer {
         uniform vec3 uLightColor;
         uniform vec3 uAmbient;
         uniform vec3 uCameraPos;
+        uniform mat4 uInvModelMatrix;
 
         varying vec3 vWorldPos;
-        varying vec3 vLocalPos;
 
         // Ray-box intersection
         vec2 intersectBox(vec3 orig, vec3 dir, vec3 boxMin, vec3 boxMax) {
@@ -533,13 +532,11 @@ export class VolumetricCloudRenderer {
         }
 
         void main() {
-          vec3 rayOrigin = uCameraPos;
           vec3 rayDir = normalize(vWorldPos - uCameraPos);
 
-          // Transform to local [0,1] space
-          mat4 invModel = inverse(modelMatrix);
-          vec3 localOrigin = (invModel * vec4(rayOrigin, 1.0)).xyz + 0.5;
-          vec3 localDir = normalize((invModel * vec4(rayDir, 0.0)).xyz);
+          // Transform to local [0,1] space using precomputed inverse
+          vec3 localOrigin = (uInvModelMatrix * vec4(uCameraPos, 1.0)).xyz + 0.5;
+          vec3 localDir = normalize((uInvModelMatrix * vec4(rayDir, 0.0)).xyz);
 
           vec2 t = intersectBox(localOrigin, localDir, vec3(0.0), vec3(1.0));
           if (t.x > t.y || t.y < 0.0) discard;
@@ -588,6 +585,8 @@ export class VolumetricCloudRenderer {
       side: THREE.BackSide,
       depthWrite: false
     });
+
+    this.invModelMatrix = new THREE.Matrix4();
 
     this.mesh = new THREE.Mesh(geometry, this.material);
     this.mesh.visible = false;
@@ -640,6 +639,11 @@ export class VolumetricCloudRenderer {
     // Position and scale mesh
     this.mesh.position.set(worldCenter.x, worldCenter.y, worldCenter.z);
     this.mesh.scale.set(gridSize, gridSize, gridSize);
+
+    // Update inverse model matrix for raymarching
+    this.mesh.updateMatrixWorld();
+    this.invModelMatrix.copy(this.mesh.matrixWorld).invert();
+    this.material.uniforms.uInvModelMatrix.value.copy(this.invModelMatrix);
   }
 
   setVisible(visible) {
